@@ -1,0 +1,14 @@
+{
+  "name": "react-exo-hooks",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "react": "^19.1.0"
+  }
+}
