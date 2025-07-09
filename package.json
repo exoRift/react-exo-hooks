@@ -1,6 +1,7 @@
 {
   "name": "react-exo-hooks",
   "module": "index.ts",
+  "main": "dist/index.js",
   "devDependencies": {
     "@types/bun": "latest",
     "@types/next": "^9.0.0",

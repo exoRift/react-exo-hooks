@@ -22,7 +22,7 @@ export type PromiseResult<T, P extends boolean, E = unknown> = {
  * @param persist Persist result values and error values into states that wouldn't normally have them
  * @returns       An object containing the state and settled values
  */
-export function useFetch<T, P extends boolean, E = unknown> (
+export function usePromise<T, P extends boolean, E = unknown> (
   fn: () => false | undefined | null | '' | ((signal?: AbortSignal) => Promise<T>),
   deps: React.DependencyList = [],
   persist?: P

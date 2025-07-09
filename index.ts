@@ -9,6 +9,15 @@ export {
 } from './hooks/use-set'
 
 export {
+  type PromiseResult,
+  usePromise
+} from './hooks/use-promise'
+
+export {
+  useObject
+} from './hooks/use-object'
+
+export {
   useDebouncedState
 } from './hooks/use-debounced-state'
 
