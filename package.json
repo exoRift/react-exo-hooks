@@ -2,6 +2,11 @@
   "name": "react-exo-hooks",
   "module": "index.ts",
   "main": "dist/index.js",
+  "keywords": ["react", "hooks", "usearray", "use-array", "useobject", "use-object", "usemap", "use-map", "useunsaved", "use-unsaved", "useset", "use-set", "usepromise", "use-promise", "debounce"],
+  "scripts": {
+    "build": "[ -d dist ] && rm -r dist; tsc --project tsconfig.build.json",
+    "lint": "eslint ."
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/next": "^9.0.0",
