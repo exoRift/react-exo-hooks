@@ -33,7 +33,7 @@ export class StatefulSet<T> extends Set<T> {
    * Force a signal update
    */
   forceUpdate (): void {
-    this._dispatchSignal?.(-1)
+    this._dispatchSignal?.(-Math.random())
   }
 
   /**
@@ -111,8 +111,8 @@ export class StatefulSet<T> extends Set<T> {
  * @param initial The initial set value
  * @returns       The stately set
  */
-export function useSet<T> (initial?: Set<T> | T[]): StatefulSet<T> {
-  const [, setSignal] = useState(Array.isArray(initial) ? initial.length : initial?.size ?? 0)
+export function useSet<T> (initial?: Iterable<T>): StatefulSet<T> {
+  const [, setSignal] = useState(Array.isArray(initial) ? initial.length : initial instanceof Set ? initial.size : 0)
   const [set, setSet] = useState(new StatefulSet(initial, setSignal))
 
   useEffect(() => set._setRedefine(setSet), [set])

@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 /**
  * Create an object state value that auto updates on mutation
+ * @note Effects and memos that use this object should also listen for its signal: `+INSTANCE`
  * @param initial The initial object
- * @returns       [object, setObject]
+ * @returns       [object, setObject, forceUpdate]
  */
-export function useObject<T extends object> (initial: T): [object: T, setObject: React.Dispatch<React.SetStateAction<T>>] {
+export function useObject<T extends object> (initial: T): [object: T, setObject: React.Dispatch<React.SetStateAction<T>>, forceUpdate: () => void] {
   const [signal, setSignal] = useState(0)
   const [object, setObject] = useState(initial)
 
@@ -23,6 +24,10 @@ export function useObject<T extends object> (initial: T): [object: T, setObject:
     }
   }), [object])
 
+  const forceUpdate = useCallback(() => {
+    setSignal((prior) => prior + 1)
+  }, [])
+
   proxy.valueOf = () => signal
-  return [proxy, setObject]
+  return [proxy, setObject, forceUpdate]
 }
