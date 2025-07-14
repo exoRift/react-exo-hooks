@@ -9,12 +9,12 @@ export class StatefulArray<T> extends Array<T> {
   private readonly _dispatchSignal?: React.Dispatch<SetStateAction<number>>
   /** The update signal */
   private _signal: number
-  /** THe dispatch function for redefining the set */
+  /** THe dispatch function for redefining the array */
   private _dispatchRedefine?: React.Dispatch<SetStateAction<StatefulArray<T>>>
 
   /**
-   * Construct a StatefulSet
-   * @param initial        The initial value (parameter for a vanilla set)
+   * Construct a StatefulArray
+   * @param initial        The initial value (parameter for a vanilla array)
    * @param dispatchSignal The dispatch function for the signal
    */
   constructor (initial?: Iterable<T>, dispatchSignal?: StatefulArray<T>['_dispatchSignal']) {
@@ -160,7 +160,7 @@ export class StatefulArray<T> extends Array<T> {
   }
 
   /**
-   * Returns the set's signal. Used for effects and memos that use this set
+   * Returns the array's signal. Used for effects and memos that use this array
    * @returns A numeric signal
    */
   override valueOf (): number {
