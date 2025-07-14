@@ -1,8 +1,21 @@
 {
   "name": "react-exo-hooks",
+  "version": "1.0.0",
   "module": "index.ts",
   "main": "dist/index.js",
+  "description": "A collection of useful hooks for data structures and logic, designed for efficiency",
   "keywords": ["react", "hooks", "usearray", "use-array", "useobject", "use-object", "usemap", "use-map", "useunsaved", "use-unsaved", "useset", "use-set", "usepromise", "use-promise", "debounce"],
+  "files": [
+    "dist/"
+  ],
+  "author": {
+    "name": "exoRift",
+    "url": "https://github.com/exoRift"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/exoRift/react-exo-hooks.git"
+  },
   "scripts": {
     "build": "[ -d dist ] && rm -r dist; tsc --project tsconfig.build.json",
     "lint": "eslint ."
