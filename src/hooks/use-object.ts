@@ -1,4 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+/**
+ * Check if a value is a plain object
+ * @param value The value
+ * @returns     true if a plain object
+ */
+function isPlainObject (value: unknown): value is object {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Object.getPrototypeOf(value) === Object.prototype
+  )
+}
 
 /**
  * Proxy an object recursively
@@ -9,26 +22,35 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 function proxyObject<T extends object> (object: T, setSignal: React.Dispatch<React.SetStateAction<number>>): [proxy: T, revoke: () => void] {
   const revocables: Array<() => void> = []
 
+  for (const key in object) {
+    const original = object[key as keyof typeof object]
+    if (isPlainObject(original)) {
+      const [subproxy, subrevoke] = proxyObject(original, setSignal)
+      object[key as keyof typeof object] = subproxy as any
+      revocables.push(() => {
+        subrevoke()
+        object[key as keyof typeof object] = original
+      })
+    }
+  }
+
   const proxy = Proxy.revocable(object, {
     set (target, prop, newValue) {
       if (prop !== 'valueOf' && target[prop as keyof typeof target] !== newValue) setSignal((prior) => prior + 1)
-      const isPlain = (
-        typeof object === 'object' &&
-        (object as any) !== null &&
-        Object.getPrototypeOf(object) === Object.prototype
-      )
+      const isPlain = isPlainObject(newValue)
       if (isPlain) {
         const [subproxy, subrevoke] = proxyObject(newValue, setSignal)
-        target[prop as keyof typeof target] = subproxy
-        revocables.push(subrevoke)
-      } else target[prop as keyof typeof target] = newValue
-      return true
+        revocables.push(() => {
+          subrevoke()
+          Reflect.set(target, prop, newValue)
+        })
+        return Reflect.set(target, prop, subproxy)
+      } else return Reflect.set(target, prop, newValue)
     },
 
     deleteProperty (target, prop) {
       if (prop in target) setSignal((prior) => prior + 1)
-      delete target[prop as keyof typeof target]
-      return true
+      return Reflect.deleteProperty(target, prop)
     }
   })
 
@@ -49,19 +71,28 @@ function proxyObject<T extends object> (object: T, setSignal: React.Dispatch<Rea
  * @returns       [object, setObject, forceUpdate, revoke]
  */
 export function useObject<T extends object> (initial: T): [object: T, setObject: React.Dispatch<React.SetStateAction<T>>, forceUpdate: () => void, revoke: () => void] {
+  const revoked = useRef(false)
+
   const [signal, setSignal] = useState(0)
   const [object, setObject] = useState(initial)
 
-  const [proxy, revoke] = useMemo(() => proxyObject(object, setSignal), [object])
+  const [proxy, _revoke] = useMemo(() => proxyObject(object, setSignal), [object])
 
   const forceUpdate = useCallback(() => {
     setSignal((prior) => prior + 1)
   }, [])
+
+  const revoke = useCallback(() => {
+    if (!import.meta.hot) { // eslint-disable-line @typescript-eslint/no-unnecessary-condition
+      _revoke()
+      revoked.current = true
+    }
+  }, [_revoke])
 
   useEffect(() => {
     return () => revoke()
   }, [revoke])
 
   proxy.valueOf = () => signal
-  return [proxy, setObject, forceUpdate, revoke]
+  return [revoked.current ? object : proxy, setObject, forceUpdate, revoke]
 }
