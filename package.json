@@ -1,6 +1,6 @@
 {
   "name": "react-exo-hooks",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "module": "index.ts",
   "main": "dist/index.js",
   "description": "A collection of useful hooks for data structures and logic, designed for efficiency",
