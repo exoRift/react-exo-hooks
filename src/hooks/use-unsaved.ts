@@ -1,12 +1,14 @@
 import { useEffect } from 'react'
-import type { Router } from 'next/router'
+import type { NextRouter, useRouter } from 'next/router'
 
 /**
  * Don't let a user navigate or close the page if changes aren't saved
  * @param unsaved    Are there unsaved changes?
- * @param nextRouter If using NextJS, the next router (prevents NextJS navigation)
+ * @param nextRouter If using NextJS, the next router instance or hook (prevents NextJS navigation)
  */
-export function useUnsaved (unsaved?: boolean, nextRouter?: Router): void {
+export function useUnsaved (unsaved?: boolean, nextRouter?: NextRouter | typeof useRouter): void {
+  const router = typeof nextRouter === 'function' ? nextRouter() : nextRouter
+
   useEffect(() => {
     if (unsaved) {
       /**
@@ -23,15 +25,15 @@ export function useUnsaved (unsaved?: boolean, nextRouter?: Router): void {
        */
       function preventUnsavedNav (url: string): void {
         const urlSplit = url.split('?')[0]!.split('/')
-        if (nextRouter?.pathname.split('/').every((subroute, i) => (subroute.startsWith('[') && subroute.endsWith(']')) || subroute === urlSplit[i])) return
+        if (router?.pathname.split('/').every((subroute, i) => (subroute.startsWith('[') && subroute.endsWith(']')) || subroute === urlSplit[i])) return
 
         if (!confirm('Changes you made may not be saved.')) throw new Error('Navigation Canceled')
       }
 
-      nextRouter?.events.on('routeChangeStart', preventUnsavedNav)
+      router?.events.on('routeChangeStart', preventUnsavedNav)
       window.addEventListener('beforeunload', preventUnsavedClose)
       return () => {
-        nextRouter?.events.off('routeChangeStart', preventUnsavedNav)
+        router?.events.off('routeChangeStart', preventUnsavedNav)
         window.removeEventListener('beforeunload', preventUnsavedClose)
       }
     }
