@@ -17,8 +17,10 @@ export class StatefulArray<T> extends Array<T> {
    * @param initial        The initial value (parameter for a vanilla array)
    * @param dispatchSignal The dispatch function for the signal
    */
-  constructor (initial?: Iterable<T>, dispatchSignal?: StatefulArray<T>['_dispatchSignal']) {
-    if (initial) super(...initial)
+  constructor (initial?: number | Iterable<T>, dispatchSignal?: StatefulArray<T>['_dispatchSignal']) {
+    // Some internal array methods call the constructor with the (arrayLength) signature
+    if (typeof initial === 'number') super(initial)
+    else if (initial) super(...initial)
     else super()
     this._signal = 0
     this._dispatchSignal = dispatchSignal
