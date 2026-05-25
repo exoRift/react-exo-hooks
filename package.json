@@ -17,14 +17,20 @@
   },
   "scripts": {
     "build": "[ -d dist ] && rm -r dist; tsc --project tsconfig.build.json",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "bun test",
+    "test:watch": "bun test --watch"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/next": "^9.0.0",
+    "@testing-library/react": "^16.1.0",
     "eslint": "^9.30.1",
     "eslint-config": "github:exoRift/eslint-config",
-    "eslint-plugin-jsdoc": "^51.3.4"
+    "eslint-plugin-jsdoc": "^51.3.4",
+    "happy-dom": "^17.6.3",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   },
   "peerDependencies": {
     "react": "^19.1.0",

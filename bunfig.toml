@@ -1,0 +1,4 @@
+[test]
+# Use a DOM-capable environment for React hook tests.
+environment = "happy-dom"
+preload = ["./test/setup.ts"]
