@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { renderHook, waitFor } from '@testing-library/react'
+
 import { usePromise } from '../src/hooks/use-promise'
 
 describe('usePromise', () => {

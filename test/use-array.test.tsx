@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { act, renderHook, waitFor } from '@testing-library/react'
+
 import { useArray } from '../src/hooks/use-array'
 
 describe('useArray', () => {

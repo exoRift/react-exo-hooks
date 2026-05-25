@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { act, renderHook } from '@testing-library/react'
+
 import { useObject } from '../src/hooks/use-object'
+import { StatefulArray } from '../src/hooks/use-array'
 
 describe('useObject', () => {
   test('mutating a nested property updates the signal', () => {
@@ -34,5 +36,55 @@ describe('useObject', () => {
     })
 
     expect(result.current[0].foo.bar).toBe('c')
+  })
+
+  test('transformArrays wraps arrays when enabled', () => {
+    const { result } = renderHook(() => useObject({ items: ['a'] }, true))
+    const initialSignal = +result.current[0]
+
+    expect(result.current[0].items).toBeInstanceOf(StatefulArray)
+
+    act(() => {
+      result.current[0].items.push('b')
+    })
+
+    expect(result.current[0].items.length).toBe(2)
+    expect(+result.current[0]).toBeGreaterThan(initialSignal)
+  })
+
+  test('transformArrays keeps vanilla arrays when disabled', () => {
+    const { result } = renderHook(() => useObject({ items: ['a'] }, false))
+    const initialSignal = +result.current[0]
+
+    expect(Array.isArray(result.current[0].items)).toBe(true)
+    expect(result.current[0].items).not.toBeInstanceOf(StatefulArray)
+
+    act(() => {
+      result.current[0].items.push('b')
+    })
+
+    expect(result.current[0].items.length).toBe(2)
+    expect(+result.current[0]).toBe(initialSignal)
+  })
+
+  test('object mutations after unmount do not update the signal', () => {
+    const { result, unmount } = renderHook(() => useObject({ foo: { bar: 'a' } }))
+    const initialSignal = +result.current[0]
+
+    unmount()
+
+    result.current[0].foo.bar = 'z'
+    expect(+result.current[0]).toBe(initialSignal)
+  })
+
+  test('array mutations after unmount do not update the signal', () => {
+    const { result, unmount } = renderHook(() => useObject({ items: ['a'] }, true))
+    const initialSignal = +result.current[0]
+
+    unmount()
+
+    result.current[0].items.push('b')
+    expect(result.current[0].items.length).toBe(2)
+    expect(+result.current[0]).toBe(initialSignal)
   })
 })

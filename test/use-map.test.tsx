@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { act, renderHook, waitFor } from '@testing-library/react'
+
 import { useMap } from '../src/hooks/use-map'
 
 describe('useMap', () => {
