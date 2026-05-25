@@ -87,4 +87,32 @@ describe('useObject', () => {
     expect(result.current[0].items.length).toBe(2)
     expect(+result.current[0]).toBe(initialSignal)
   })
+
+  test('object inside array inside object is proxied', () => {
+    const { result } = renderHook(() => useObject({ items: [{ nested: { count: 0 } }] }, true))
+    const initialSignal = +result.current[0]
+
+    act(() => {
+      result.current[0].items[0]!.nested.count += 1
+    })
+
+    expect(result.current[0].items[0]!.nested.count).toBe(1)
+    expect(+result.current[0]).toBeGreaterThan(initialSignal)
+  })
+
+  test('recursive references do not cause non-termination', () => {
+    const shared: any = { value: 1 }
+    const root: any = { items: [shared] }
+    shared.parent = root
+
+    const { result } = renderHook(() => useObject(root, true))
+    const initialSignal = +result.current[0]
+
+    act(() => {
+      result.current[0].items[0].value = 2
+    })
+
+    expect(result.current[0].items[0].value).toBe(2)
+    expect(+result.current[0]).toBeGreaterThan(initialSignal)
+  })
 })
