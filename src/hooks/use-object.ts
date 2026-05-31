@@ -30,7 +30,7 @@ function proxyArray<T> (arr: T[], update: () => void, objectTracker: Set<any>): 
     if (objectTracker.has(element)) continue
 
     if (isPlainObject(element)) arr[i] = proxyObject(element, update, true, objectTracker)
-    else if (Array.isArray(element) && !(element instanceof StatefulArray)) arr[i] = proxyArray(element, update, objectTracker) as any
+    else if (Array.isArray(element)) arr[i] = proxyArray(element, update, objectTracker) as any
   }
 
   const stateful = new StatefulArray(arr, update)
