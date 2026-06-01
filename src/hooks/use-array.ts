@@ -137,7 +137,7 @@ export class StatefulArray<T> extends Array<T> {
   override sort (compareFn?: ((a: T, b: T) => number)): this {
     // No way to efficiently compare this without copying; always signal
     this._dispatchSignal?.(++this._signal)
-    return this.sort(compareFn)
+    return super.sort(compareFn)
   }
 
   /**

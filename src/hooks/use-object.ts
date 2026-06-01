@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StatefulArray } from './use-array'
 
+const ogObjectLookup = new WeakMap()
+
 /**
  * Check if a value is a plain object
  * @param value The value
@@ -10,7 +12,10 @@ function isPlainObject (value: unknown): value is object {
   return (
     typeof value === 'object' &&
     value !== null &&
-    Object.getPrototypeOf(value) === Object.prototype
+    (
+      Object.getPrototypeOf(value) === Object.prototype ||
+      Object.getPrototypeOf(value) === Proxy.prototype
+    )
   )
 }
 
@@ -22,20 +27,18 @@ function isPlainObject (value: unknown): value is object {
  * @param objectTracker A set to keep track of transformed objects to prevent infinite recursions
  * @returns             The stateful array
  */
-function proxyArray<T> (arr: T[], update: () => void, objectTracker: Set<any>): StatefulArray<T> {
-  objectTracker.add(arr)
-
-  for (let i = 0; i < arr.length; ++i) {
-    const element = arr[i]
-    if (objectTracker.has(element)) continue
-
-    if (isPlainObject(element)) arr[i] = proxyObject(element, update, true, objectTracker)
-    else if (Array.isArray(element)) arr[i] = proxyArray(element, update, objectTracker) as any
-  }
+function proxyArray<T> (arr: T[], update: () => void, objectTracker: Map<any, any>): T[] {
+  if (objectTracker.has(arr)) return arr
 
   const stateful = new StatefulArray(arr, update)
-  objectTracker.add(stateful)
-  objectTracker.delete(arr)
+
+  for (let i = 0; i < arr.length; ++i) {
+    const element = stateful[i]
+    if (isPlainObject(element)) stateful[i] = proxyObject(element, update, true, objectTracker)
+    else if (Array.isArray(element)) stateful[i] = proxyArray(element, update, objectTracker) as any
+  }
+
+  objectTracker.set(arr, stateful)
   return stateful
 }
 
@@ -47,23 +50,11 @@ function proxyArray<T> (arr: T[], update: () => void, objectTracker: Set<any>): 
  * @param objectTracker   A set to keep track of transformed objects to prevent infinite recursions
  * @returns               [The proxied object, a revocation function]
  */
-function proxyObject<T extends object> (object: T, update: () => void, transformArrays: boolean, objectTracker: Set<any>): T {
-  objectTracker.add(object)
-
-  for (const key in object) {
-    const original = object[key as keyof typeof object]
-    if (objectTracker.has(original)) continue
-
-    if (isPlainObject(original)) {
-      const subproxy = proxyObject(original, update, transformArrays, objectTracker)
-
-      object[key as keyof typeof object] = subproxy as any
-    } else if (transformArrays && Array.isArray(original)) {
-      const stateful = proxyArray(original, update, objectTracker)
-
-      object[key as keyof typeof object] = stateful as any
-    }
-  }
+function proxyObject<T extends object> (object: T, update: () => void, transformArrays: boolean, objectTracker: Map<any, any>): T {
+  const original = ogObjectLookup.get(object)
+  if (original) object = original
+  const existing = objectTracker.get(object)
+  if (existing) return existing
 
   const proxy = new Proxy(object, {
     set (target, prop, newValue, receiver) {
@@ -90,8 +81,23 @@ function proxyObject<T extends object> (object: T, update: () => void, transform
     }
   })
 
-  objectTracker.delete(object)
-  objectTracker.add(proxy)
+  objectTracker.set(object, proxy)
+
+  for (const key in object) {
+    const original = object[key as keyof typeof object]
+    if (isPlainObject(original)) {
+      const subproxy = proxyObject(original, update, transformArrays, objectTracker)
+
+      object[key as keyof typeof object] = subproxy as any
+    } else if (transformArrays && Array.isArray(original)) {
+      const stateful = proxyArray(original, update, objectTracker)
+
+      object[key as keyof typeof object] = stateful as any
+    }
+  }
+
+  ogObjectLookup.set(proxy, object)
+  objectTracker.set(object, proxy)
   return proxy
 }
 
@@ -112,7 +118,7 @@ function proxyObject<T extends object> (object: T, update: () => void, transform
 export function useObject<T extends object> (initial: T, transformArrays = false): [object: T, setObject: React.Dispatch<React.SetStateAction<T>>, forceUpdate: () => void] {
   const revoked = useRef(false)
   /** Keep track of transformed objects to prevent infinite recursions */
-  const objectTracker = useRef(new Set<any>())
+  const objectTracker = useRef(new Map())
 
   const [signal, setSignal] = useState(0)
   const [object, setObject] = useState(initial)
