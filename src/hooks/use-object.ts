@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-const ogObjectLookup = new WeakMap()
-const arrayMutators = new Set([
+const OG_OBJECT_LOOKUP = new WeakMap()
+const ARRAY_MUTATORS = new Set([
   'push',
   'pop',
   'shift',
@@ -38,7 +38,7 @@ function isPlainObject (value: unknown): value is object {
  * @returns             The stateful array
  */
 function proxyArray<T> (arr: T[], update: () => void, objectTracker: WeakMap<any, any>): T[] {
-  const original = ogObjectLookup.get(arr)
+  const original = OG_OBJECT_LOOKUP.get(arr)
   if (original) arr = original
   const existing = objectTracker.get(arr)
   if (existing) return existing
@@ -49,7 +49,7 @@ function proxyArray<T> (arr: T[], update: () => void, objectTracker: WeakMap<any
       if (!active) return Reflect.get(target, prop, receiver)
       const value = Reflect.get(target, prop, receiver)
 
-      if (typeof prop === 'string' && arrayMutators.has(prop)) {
+      if (typeof prop === 'string' && ARRAY_MUTATORS.has(prop)) {
         return (...args: unknown[]) => {
           const result = value.apply(target, args)
 
@@ -74,7 +74,7 @@ function proxyArray<T> (arr: T[], update: () => void, objectTracker: WeakMap<any
     }
   })
 
-  ogObjectLookup.set(proxy, arr)
+  OG_OBJECT_LOOKUP.set(proxy, arr)
   objectTracker.set(arr, proxy)
 
   for (let i = 0; i < arr.length; ++i) {
@@ -96,7 +96,7 @@ function proxyArray<T> (arr: T[], update: () => void, objectTracker: WeakMap<any
  * @returns             [The proxied object, a revocation function]
  */
 function proxyObject<T extends object> (object: T, update: () => void, objectTracker: WeakMap<any, any>): T {
-  const original = ogObjectLookup.get(object)
+  const original = OG_OBJECT_LOOKUP.get(object)
   if (original) object = original
   const existing = objectTracker.get(object)
   if (existing) return existing
@@ -131,7 +131,7 @@ function proxyObject<T extends object> (object: T, update: () => void, objectTra
     }
   })
 
-  ogObjectLookup.set(proxy, object)
+  OG_OBJECT_LOOKUP.set(proxy, object)
   objectTracker.set(object, proxy)
 
   for (const key in object) {
