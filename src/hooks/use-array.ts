@@ -6,11 +6,11 @@ import { type SetStateAction, useState, useEffect } from 'react'
  */
 export class StatefulArray<T> extends Array<T> {
   /** The dispatch function for the signal */
-  private readonly _dispatchSignal?: React.Dispatch<SetStateAction<number>>
+  protected readonly _dispatchSignal?: React.Dispatch<SetStateAction<number>>
   /** The update signal */
-  private _signal: number
+  protected _signal: number
   /** THe dispatch function for redefining the array */
-  private _dispatchRedefine?: React.Dispatch<SetStateAction<StatefulArray<T>>>
+  protected _dispatchRedefine?: React.Dispatch<SetStateAction<StatefulArray<T>>>
 
   /**
    * Construct a StatefulArray
@@ -24,6 +24,16 @@ export class StatefulArray<T> extends Array<T> {
     else super()
     this._signal = 0
     this._dispatchSignal = dispatchSignal
+
+    return new Proxy(this, {
+      set (target, prop, value, receiver) {
+        const oldValue = Reflect.get(target, prop, receiver)
+
+        if (oldValue !== value) target._dispatchSignal?.(++target._signal)
+
+        return Reflect.set(target, prop, value, receiver)
+      }
+    })
   }
 
   /**
@@ -171,7 +181,7 @@ export class StatefulArray<T> extends Array<T> {
 }
 
 /**
- * Use a stately array
+ * Create a clone of an iterable object in the form of an array that updates on mutation
  * @note Any effects or memos that use this set should also listen for its signal (`+INSTANCE`)
  * @param initial The initial array value
  * @returns       The stately array

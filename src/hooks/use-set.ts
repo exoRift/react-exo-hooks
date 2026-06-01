@@ -6,9 +6,9 @@ import { type SetStateAction, useState, useEffect } from 'react'
  */
 export class StatefulSet<T> extends Set<T> {
   /** The dispatch function for the signal */
-  private readonly _dispatchSignal?: React.Dispatch<SetStateAction<number>>
+  protected readonly _dispatchSignal?: React.Dispatch<SetStateAction<number>>
   /** THe dispatch function for redefining the set */
-  private _dispatchRedefine?: React.Dispatch<SetStateAction<StatefulSet<T>>>
+  protected _dispatchRedefine?: React.Dispatch<SetStateAction<StatefulSet<T>>>
 
   /**
    * Construct a StatefulSet
@@ -106,7 +106,7 @@ export class StatefulSet<T> extends Set<T> {
 }
 
 /**
- * Use a stately set
+ * Create a clone of a set that updates on mutation
  * @note Any effects or memos that use this set should also listen for its signal (`+INSTANCE`)
  * @param initial The initial set value
  * @returns       The stately set

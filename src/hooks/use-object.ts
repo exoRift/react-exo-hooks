@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { StatefulArray } from './use-array'
 
 const ogObjectLookup = new WeakMap()
+const arrayMutators = new Set([
+  'push',
+  'pop',
+  'shift',
+  'unshift',
+  'splice',
+  'sort',
+  'reverse',
+  'fill',
+  'copyWithin'
+])
 
 /**
  * Check if a value is a plain object
@@ -27,47 +37,85 @@ function isPlainObject (value: unknown): value is object {
  * @param objectTracker A set to keep track of transformed objects to prevent infinite recursions
  * @returns             The stateful array
  */
-function proxyArray<T> (arr: T[], update: () => void, objectTracker: Map<any, any>): T[] {
-  if (objectTracker.has(arr)) return arr
+function proxyArray<T> (arr: T[], update: () => void, objectTracker: WeakMap<any, any>): T[] {
+  const original = ogObjectLookup.get(arr)
+  if (original) arr = original
+  const existing = objectTracker.get(arr)
+  if (existing) return existing
 
-  const stateful = new StatefulArray(arr, update)
+  let active = false
+  const proxy = new Proxy(arr, {
+    get (target, prop, receiver) {
+      if (!active) return Reflect.get(target, prop, receiver)
+      const value = Reflect.get(target, prop, receiver)
+
+      if (typeof prop === 'string' && arrayMutators.has(prop)) {
+        return (...args: unknown[]) => {
+          const result = value.apply(target, args)
+
+          update()
+
+          return result
+        }
+      }
+
+      return value
+    },
+
+    set (target, prop, value, receiver) {
+      if (!active) return Reflect.set(target, prop, value, receiver)
+
+      const oldValue = Reflect.get(target, prop, receiver)
+      const changed = oldValue !== value
+
+      if (changed) update()
+
+      return Reflect.set(target, prop, value, receiver)
+    }
+  })
+
+  ogObjectLookup.set(proxy, arr)
+  objectTracker.set(arr, proxy)
 
   for (let i = 0; i < arr.length; ++i) {
-    const element = stateful[i]
-    if (isPlainObject(element)) stateful[i] = proxyObject(element, update, true, objectTracker)
-    else if (Array.isArray(element)) stateful[i] = proxyArray(element, update, objectTracker) as any
+    const element = proxy[i]
+    if (isPlainObject(element)) proxy[i] = proxyObject(element, update, objectTracker)
+    else if (Array.isArray(element)) proxy[i] = proxyArray(element, update, objectTracker) as any
   }
 
-  objectTracker.set(arr, stateful)
-  return stateful
+  active = true
+
+  return proxy
 }
 
 /**
  * Proxy an object recursively
- * @param object          The object
- * @param update          The function that updates the signal
- * @param transformArrays Should we transform arrays into StatefulArrays?
- * @param objectTracker   A set to keep track of transformed objects to prevent infinite recursions
- * @returns               [The proxied object, a revocation function]
+ * @param object        The object
+ * @param update        The function that updates the signal
+ * @param objectTracker A set to keep track of transformed objects to prevent infinite recursions
+ * @returns             [The proxied object, a revocation function]
  */
-function proxyObject<T extends object> (object: T, update: () => void, transformArrays: boolean, objectTracker: Map<any, any>): T {
+function proxyObject<T extends object> (object: T, update: () => void, objectTracker: WeakMap<any, any>): T {
   const original = ogObjectLookup.get(object)
   if (original) object = original
   const existing = objectTracker.get(object)
   if (existing) return existing
 
+  let active = false
   const proxy = new Proxy(object, {
     set (target, prop, newValue, receiver) {
+      if (!active) return Reflect.set(target, prop, newValue, receiver)
+
       if (objectTracker.has(newValue)) return Reflect.set(target, prop, newValue, receiver)
 
       if (prop !== 'valueOf' && target[prop as keyof typeof target] !== newValue) update()
 
       const isPlain = isPlainObject(newValue)
       if (isPlain) {
-        const subproxy = proxyObject(newValue, update, transformArrays, objectTracker)
+        const subproxy = proxyObject(newValue, update, objectTracker)
 
         return Reflect.set(target, prop, subproxy, receiver)
-      } else if (transformArrays && Array.isArray(newValue)) {
+      } else if (Array.isArray(newValue)) {
         const stateful = proxyArray(newValue, update, objectTracker)
 
         return Reflect.set(target, prop, stateful, receiver)
@@ -75,55 +123,53 @@ function proxyObject<T extends object> (object: T, update: () => void, transform
     },
 
     deleteProperty (target, prop) {
+      if (!active) return Reflect.deleteProperty(target, prop)
+
       if (prop in target) update()
 
       return Reflect.deleteProperty(target, prop)
     }
   })
 
+  ogObjectLookup.set(proxy, object)
   objectTracker.set(object, proxy)
 
   for (const key in object) {
     const original = object[key as keyof typeof object]
     if (isPlainObject(original)) {
-      const subproxy = proxyObject(original, update, transformArrays, objectTracker)
+      const subproxy = proxyObject(original, update, objectTracker)
 
       object[key as keyof typeof object] = subproxy as any
-    } else if (transformArrays && Array.isArray(original)) {
+    } else if (Array.isArray(original)) {
       const stateful = proxyArray(original, update, objectTracker)
 
       object[key as keyof typeof object] = stateful as any
     }
   }
 
-  ogObjectLookup.set(proxy, object)
-  objectTracker.set(object, proxy)
+  active = true
+
   return proxy
 }
 
 /**
- * Create an object state value that auto updates on mutation \
+ * Create a proxy object that updates on mutation.\
+ * Changes to this object and its children will affect the original.\
+ * This also applies to arrays.\
  * This hook is recursive into simple object properties. Class instances will remain unaffected
  * @note Effects and memos that use this object should also listen for its signal: `+INSTANCE`
- * @param initial         The initial object
- * @param transformArrays Automatically transform arrays into stateful arrays on init and on property set/update.\
- *                        Stateful arrays update on mutation and are used internally by the `useArray` hook.\
- *                        Upon component unmount, revert back to vanilla arrays.\
- *                        \
- *                        WARNING: Be careful when performing `obj[PROPERTY] = arr`, where `arr` is a variable,\
- *                        since your variable will no longer reference the same array that is now present in the object\
- *                        (the same principle applies to shared references to the array properties on init)
- * @returns               [object, setObject, forceUpdate]
+ * @param initial The initial object
+ * @returns       [object, setObject, forceUpdate]
  */
-export function useObject<T extends object> (initial: T, transformArrays = false): [object: T, setObject: React.Dispatch<React.SetStateAction<T>>, forceUpdate: () => void] {
+export function useObject<T extends object> (initial: T): [object: T, setObject: React.Dispatch<React.SetStateAction<T>>, forceUpdate: () => void] {
   const revoked = useRef(false)
   /** Keep track of transformed objects to prevent infinite recursions */
-  const objectTracker = useRef(new Map())
+  const objectTracker = useRef(new WeakMap())
 
   const [signal, setSignal] = useState(0)
   const [object, setObject] = useState(initial)
 
-  const proxy = useMemo(() => proxyObject(object, () => revoked.current ? undefined : setSignal((prior) => prior + 1), transformArrays, objectTracker.current), [object, setSignal, transformArrays])
+  const proxy = useMemo(() => proxyObject(object, () => revoked.current ? undefined : setSignal((prior) => prior + 1), objectTracker.current), [object, setSignal])
 
   const forceUpdate = useCallback(() =>
     setSignal((prior) => prior + 1)
@@ -135,5 +181,5 @@ export function useObject<T extends object> (initial: T, transformArrays = false
   }, [])
 
   proxy.valueOf = () => signal
-  return [revoked.current ? object : proxy, setObject, forceUpdate]
+  return [proxy, setObject, forceUpdate]
 }
