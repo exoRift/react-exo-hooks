@@ -30,6 +30,28 @@ function isPlainObject (value: unknown): value is object {
 }
 
 /**
+ * Transform a value into its proxied variant, if available
+ * @param value         The value
+ * @param update        The update function for mutations
+ * @param objectTracker A set to keep track of transformed objects to prevent infinite recursions
+ * @returns             The proxied variant (or the original value if unproxyable)
+ */
+function transformValue<T> (value: T, update: () => void, objectTracker: WeakMap<any, any>): T {
+  if (typeof value !== 'object' || value === null) return value
+
+  const original = OG_OBJECT_LOOKUP.get(value)
+  if (original) value = original
+
+  const existing = objectTracker.get(value)
+  if (existing) return existing
+
+  if (isPlainObject(value)) return proxyObject(value, update, objectTracker)
+  if (Array.isArray(value)) return proxyArray(value, update, objectTracker) as T
+
+  return value
+}
+
+/**
  * Convert an array to be a StatefulArray
  * @warn Mutates the original array
  * @param arr           The original array
@@ -51,7 +73,25 @@ function proxyArray<T> (arr: T[], update: () => void, objectTracker: WeakMap<any
 
       if (typeof prop === 'string' && ARRAY_MUTATORS.has(prop)) {
         return (...args: unknown[]) => {
-          const result = value.apply(target, args)
+          let transformedArgs = args
+
+          if (prop === 'push' || prop === 'unshift') {
+            transformedArgs = args.map((v) => transformValue(v, update, objectTracker))
+          } else if (prop === 'splice' && args.length > 2) {
+            transformedArgs = [
+              args[0],
+              args[1],
+              ...args.slice(2).map((v) => transformValue(v, update, objectTracker))
+            ]
+          } else if (prop === 'fill' && args.length > 0) {
+            transformedArgs = [
+              transformValue(args[0], update, objectTracker),
+              args[1],
+              args[2]
+            ]
+          }
+
+          const result = value.apply(target, transformedArgs)
 
           update()
 
@@ -66,11 +106,11 @@ function proxyArray<T> (arr: T[], update: () => void, objectTracker: WeakMap<any
       if (!active) return Reflect.set(target, prop, value, receiver)
 
       const oldValue = Reflect.get(target, prop, receiver)
-      const changed = oldValue !== value
+      const transformed = transformValue(value, update, objectTracker)
 
-      if (changed) update()
+      if (transformed !== oldValue) update()
 
-      return Reflect.set(target, prop, value, receiver)
+      return Reflect.set(target, prop, transformed, receiver)
     }
   })
 
@@ -79,8 +119,9 @@ function proxyArray<T> (arr: T[], update: () => void, objectTracker: WeakMap<any
 
   for (let i = 0; i < arr.length; ++i) {
     const element = proxy[i]
-    if (isPlainObject(element)) proxy[i] = proxyObject(element, update, objectTracker)
-    else if (Array.isArray(element)) proxy[i] = proxyArray(element, update, objectTracker) as any
+    const transformed = transformValue(element, update, objectTracker)
+
+    proxy[i] = transformed as any
   }
 
   active = true
@@ -104,22 +145,13 @@ function proxyObject<T extends object> (object: T, update: () => void, objectTra
   let active = false
   const proxy = new Proxy(object, {
     set (target, prop, newValue, receiver) {
-      if (!active) return Reflect.set(target, prop, newValue, receiver)
+      if (!active || prop === 'valueOf') return Reflect.set(target, prop, newValue, receiver)
 
-      if (objectTracker.has(newValue)) return Reflect.set(target, prop, newValue, receiver)
+      const transformedValue = transformValue(newValue, update, objectTracker)
 
-      if (prop !== 'valueOf' && target[prop as keyof typeof target] !== newValue) update()
+      if (target[prop as keyof typeof target] !== transformedValue) update()
 
-      const isPlain = isPlainObject(newValue)
-      if (isPlain) {
-        const subproxy = proxyObject(newValue, update, objectTracker)
-
-        return Reflect.set(target, prop, subproxy, receiver)
-      } else if (Array.isArray(newValue)) {
-        const stateful = proxyArray(newValue, update, objectTracker)
-
-        return Reflect.set(target, prop, stateful, receiver)
-      } else return Reflect.set(target, prop, newValue, receiver)
+      return Reflect.set(target, prop, transformedValue, receiver)
     },
 
     deleteProperty (target, prop) {
@@ -135,16 +167,10 @@ function proxyObject<T extends object> (object: T, update: () => void, objectTra
   objectTracker.set(object, proxy)
 
   for (const key in object) {
-    const original = object[key as keyof typeof object]
-    if (isPlainObject(original)) {
-      const subproxy = proxyObject(original, update, objectTracker)
+    const oldValue = object[key as keyof typeof object]
+    const transformed = transformValue(oldValue, update, objectTracker)
 
-      object[key as keyof typeof object] = subproxy as any
-    } else if (Array.isArray(original)) {
-      const stateful = proxyArray(original, update, objectTracker)
-
-      object[key as keyof typeof object] = stateful as any
-    }
+    object[key as keyof typeof object] = transformed as any
   }
 
   active = true
