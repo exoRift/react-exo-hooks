@@ -39,4 +39,20 @@ describe('usePromise', () => {
     await waitFor(() => expect(result.current.state).toBe('resolved'))
     expect(result.current.result).toBe(2)
   })
+
+  test('reruns the promise on demand', async () => {
+    let callCount = 0
+
+    const { result } = renderHook(() =>
+      usePromise(() => () => Promise.resolve(++callCount), [], true)
+    )
+
+    await waitFor(() => expect(result.current.state).toBe('resolved'))
+    expect(result.current.result).toBe(1)
+
+    result.current.rerun()
+
+    await waitFor(() => expect(result.current.result).toBe(2))
+    expect(result.current.state).toBe('resolved')
+  })
 })
