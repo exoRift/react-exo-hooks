@@ -78,16 +78,16 @@ function proxyArray<T> (arr: T[], update: (obj: any) => void, objectTracker: Wea
           let transformedArgs = args
 
           if (prop === 'push' || prop === 'unshift') {
-            transformedArgs = args.map((v) => transformValue(v, update, objectTracker, objectSignals))
+            transformedArgs = args.map((v) => transformValue(v, (subObj: any) => { update(proxy); update(subObj) }, objectTracker, objectSignals))
           } else if (prop === 'splice' && args.length > 2) {
             transformedArgs = [
               args[0],
               args[1],
-              ...args.slice(2).map((v) => transformValue(v, update, objectTracker, objectSignals))
+              ...args.slice(2).map((v) => transformValue(v, (subObj: any) => { update(proxy); update(subObj) }, objectTracker, objectSignals))
             ]
           } else if (prop === 'fill' && args.length > 0) {
             transformedArgs = [
-              transformValue(args[0], update, objectTracker, objectSignals),
+              transformValue(args[0], (subObj: any) => { update(proxy); update(subObj) }, objectTracker, objectSignals),
               args[1],
               args[2]
             ]
@@ -108,7 +108,7 @@ function proxyArray<T> (arr: T[], update: (obj: any) => void, objectTracker: Wea
       if (!active) return Reflect.set(target, prop, value, receiver)
 
       const oldValue = Reflect.get(target, prop, receiver)
-      const transformed = transformValue(value, update, objectTracker, objectSignals)
+      const transformed = transformValue(value, (subObj: any) => { update(proxy); update(subObj) }, objectTracker, objectSignals)
 
       if (transformed !== oldValue) update(proxy)
 
@@ -124,7 +124,7 @@ function proxyArray<T> (arr: T[], update: (obj: any) => void, objectTracker: Wea
 
   for (let i = 0; i < arr.length; ++i) {
     const element = proxy[i]
-    const transformed = transformValue(element, update, objectTracker, objectSignals)
+    const transformed = transformValue(element, (subObj: any) => { update(proxy); update(subObj) }, objectTracker, objectSignals)
 
     proxy[i] = transformed as any
   }
@@ -153,7 +153,7 @@ function proxyObject<T extends object> (object: T, update: (obj: any) => void, o
     set (target, prop, newValue, receiver) {
       if (!active || prop === 'valueOf') return Reflect.set(target, prop, newValue, receiver)
 
-      const transformedValue = transformValue(newValue, update, objectTracker, objectSignals)
+      const transformedValue = transformValue(newValue, (subObj: any) => { update(proxy); update(subObj) }, objectTracker, objectSignals)
 
       if (target[prop as keyof typeof target] !== transformedValue) update(proxy)
 
@@ -177,7 +177,7 @@ function proxyObject<T extends object> (object: T, update: (obj: any) => void, o
 
   for (const key in object) {
     const oldValue = object[key as keyof typeof object]
-    const transformed = transformValue(oldValue, update, objectTracker, objectSignals)
+    const transformed = transformValue(oldValue, (subObj: any) => { update(proxy); update(subObj) }, objectTracker, objectSignals)
 
     object[key as keyof typeof object] = transformed as any
   }
@@ -194,12 +194,13 @@ function proxyObject<T extends object> (object: T, update: (obj: any) => void, o
  * This hook is recursive into simple object properties. Class instances will remain unaffected
  * @note Effects and memos that use this object should also listen for its signal: `+INSTANCE`
  * @param initial The initial object
+ * @param noProxy Object references to avoid proxying
  * @returns       [object, setObject, forceUpdate]
  */
-export function useObject<T extends object> (initial: T): [object: T, setObject: React.Dispatch<React.SetStateAction<T>>, forceUpdate: () => void] {
+export function useObject<T extends object> (initial: T, noProxy?: object[]): [object: T, setObject: React.Dispatch<React.SetStateAction<T>>, forceUpdate: () => void] {
   const revoked = useRef(false)
   /** Keep track of transformed objects to prevent infinite recursions */
-  const objectTracker = useRef(new WeakMap())
+  const objectTracker = useRef(new WeakMap(noProxy?.map((o) => [o, o])))
   const objectSignals = useRef(new WeakMap<WeakKey, number>())
 
   const [_, setGeneralSignal] = useState(0)

@@ -1,3 +1,5 @@
+// These tests were mostly written by Copilot and validated by exoRift
+
 import { describe, expect, test } from 'bun:test'
 import { act, renderHook } from '@testing-library/react'
 
@@ -14,13 +16,12 @@ describe('useObject', () => {
 
     expect(result.current[0].foo.bar).toBe('b')
     const newFooSignal = +result.current[0].foo
-    expect(Number.isNaN(newFooSignal)).toBe(false)
-    if (!Number.isNaN(initialFooSignal)) expect(newFooSignal).toBeGreaterThan(initialFooSignal)
-    else expect(newFooSignal).toBeGreaterThan(0)
+    expect(newFooSignal).toBeGreaterThan(initialFooSignal)
   })
 
   test('nested object exposes its own signal and increments on mutation', () => {
     const { result } = renderHook(() => useObject({ foo: { bar: 'a' }, baz: { qux: 'x' } }))
+    const resultSignal = +result.current[0]
     const fooSignal = +result.current[0].foo
     const bazSignal = +result.current[0].baz
 
@@ -30,14 +31,12 @@ describe('useObject', () => {
 
     expect(result.current[0].foo.bar).toBe('b')
     const newFooSignal = +result.current[0].foo
-    expect(Number.isNaN(newFooSignal)).toBe(false)
-    if (!Number.isNaN(fooSignal)) expect(newFooSignal).toBeGreaterThan(fooSignal)
-    else expect(newFooSignal).toBeGreaterThan(0)
+    expect(newFooSignal).toBeGreaterThan(fooSignal)
+    const newResultSignal = +result.current[0]
+    expect(newResultSignal, 'changes percolate up').toBeGreaterThan(resultSignal)
 
-    // other nested objects should not change
     const newBazSignal = +result.current[0].baz
-    if (Number.isNaN(bazSignal)) expect(Number.isNaN(newBazSignal)).toBe(true)
-    else expect(newBazSignal).toBe(bazSignal)
+    expect(newBazSignal, 'other nested objects should not change').toBe(bazSignal)
   })
 
   test('array element nested object has independent signal', () => {
@@ -51,13 +50,10 @@ describe('useObject', () => {
 
     expect(result.current[0].items[0]!.nested.count).toBe(1)
     const newFirst = +result.current[0].items[0]!.nested
-    expect(Number.isNaN(newFirst)).toBe(false)
-    if (!Number.isNaN(firstSignal)) expect(newFirst).toBeGreaterThan(firstSignal)
-    else expect(newFirst).toBeGreaterThan(0)
+    expect(newFirst).toBeGreaterThan(firstSignal)
 
     const newSecond = +result.current[0].items[1]!.nested
-    if (Number.isNaN(secondSignal)) expect(Number.isNaN(newSecond)).toBe(true)
-    else expect(newSecond).toBe(secondSignal)
+    expect(newSecond).toBe(secondSignal)
   })
 
   test('different nested objects maintain independent signals', () => {
@@ -70,18 +66,14 @@ describe('useObject', () => {
     })
 
     const newA = +result.current[0].a
-    expect(Number.isNaN(newA)).toBe(false)
-    if (!Number.isNaN(aSignal)) expect(newA).toBeGreaterThan(aSignal)
-    else expect(newA).toBeGreaterThan(0)
+    expect(newA).toBeGreaterThan(aSignal)
 
     const newB = +result.current[0].b
-    if (Number.isNaN(bSignal)) expect(Number.isNaN(newB)).toBe(true)
-    else expect(newB).toBe(bSignal)
+    expect(newB).toBe(bSignal)
   })
 
   test('forceUpdate increments the signal', () => {
     const { result } = renderHook(() => useObject({ foo: { bar: 'a' } }))
-    // forceUpdate should not throw and should re-render; no numeric root signal assumed
     act(() => {
       result.current[2]()
     })
@@ -108,9 +100,7 @@ describe('useObject', () => {
 
     expect(result.current[0].items.length).toBe(2)
     const newItemsSignal = +result.current[0].items
-    expect(Number.isNaN(newItemsSignal)).toBe(false)
-    if (!Number.isNaN(initialItemsSignal)) expect(newItemsSignal).toBeGreaterThan(initialItemsSignal)
-    else expect(newItemsSignal).toBeGreaterThan(0)
+    expect(newItemsSignal).toBeGreaterThan(initialItemsSignal)
   })
 
   test('object values that cannot be WeakMap keys do not error', () => {
@@ -127,13 +117,10 @@ describe('useObject', () => {
     expect(result.current[0].values[0]).toBe(4)
 
     const newConfigSignal = +result.current[0].config
-    expect(Number.isNaN(newConfigSignal)).toBe(false)
-    if (!Number.isNaN(initialConfigSignal)) expect(newConfigSignal).toBeGreaterThan(initialConfigSignal)
-    else expect(newConfigSignal).toBeGreaterThan(0)
+    expect(newConfigSignal).toBeGreaterThan(initialConfigSignal)
 
     const newValuesSignal = +result.current[0].values
-    if (Number.isNaN(initialValuesSignal)) expect(Number.isNaN(newValuesSignal)).toBe(true)
-    else expect(newValuesSignal).toBeGreaterThan(initialValuesSignal)
+    expect(newValuesSignal).toBeGreaterThan(initialValuesSignal)
   })
 
   test('push proxies newly added object elements', () => {
@@ -150,9 +137,7 @@ describe('useObject', () => {
 
     expect(result.current[0].items[0]?.nested).toBe(2)
     const newItemsSignal = +result.current[0].items
-    expect(Number.isNaN(newItemsSignal)).toBe(false)
-    if (!Number.isNaN(initialElementSignal)) expect(newItemsSignal).toBeGreaterThan(initialElementSignal)
-    else expect(newItemsSignal).toBeGreaterThan(0)
+    expect(newItemsSignal).toBeGreaterThan(initialElementSignal)
   })
 
   test('unshift proxies newly added object elements', () => {
@@ -169,9 +154,7 @@ describe('useObject', () => {
 
     expect(result.current[0].items[0]?.nested).toBe(2)
     const newItemsSignal = +result.current[0].items
-    expect(Number.isNaN(newItemsSignal)).toBe(false)
-    if (!Number.isNaN(initialSignal)) expect(newItemsSignal).toBeGreaterThan(initialSignal)
-    else expect(newItemsSignal).toBeGreaterThan(0)
+    expect(newItemsSignal).toBeGreaterThan(initialSignal)
   })
 
   test('splice proxies newly inserted object elements', () => {
@@ -188,9 +171,7 @@ describe('useObject', () => {
 
     expect(result.current[0].items[1]?.nested).toBe(3)
     const newItemsSignal = +result.current[0].items
-    expect(Number.isNaN(newItemsSignal)).toBe(false)
-    if (!Number.isNaN(initialSignal)) expect(newItemsSignal).toBeGreaterThan(initialSignal)
-    else expect(newItemsSignal).toBeGreaterThan(0)
+    expect(newItemsSignal).toBeGreaterThan(initialSignal)
   })
 
   test('fill proxies object values inserted by fill', () => {
@@ -208,9 +189,7 @@ describe('useObject', () => {
     expect(result.current[0].items[0]?.nested).toBe(6)
     expect(result.current[0].items[1]?.nested).toBe(6)
     const newItemsSignal = +result.current[0].items
-    expect(Number.isNaN(newItemsSignal)).toBe(false)
-    if (!Number.isNaN(initialSignal)) expect(newItemsSignal).toBeGreaterThan(initialSignal)
-    else expect(newItemsSignal).toBeGreaterThan(0)
+    expect(newItemsSignal).toBeGreaterThan(initialSignal)
   })
 
   test('object mutations after unmount do not update the signal', () => {
@@ -221,8 +200,7 @@ describe('useObject', () => {
 
     result.current[0].foo.bar = 'z'
     const newFoo = +result.current[0].foo
-    if (Number.isNaN(fooSignal)) expect(Number.isNaN(newFoo)).toBe(true)
-    else expect(newFoo).toBe(fooSignal)
+    expect(newFoo).toBe(fooSignal)
   })
 
   test('array mutations after unmount do not update the signal', () => {
@@ -234,8 +212,7 @@ describe('useObject', () => {
     result.current[0].items.push('b')
     expect(result.current[0].items.length).toBe(2)
     const newItems = +result.current[0].items
-    if (Number.isNaN(itemsSignal)) expect(Number.isNaN(newItems)).toBe(true)
-    else expect(newItems).toBe(itemsSignal)
+    expect(newItems).toBe(itemsSignal)
   })
 
   test('object inside array inside object is proxied', () => {
@@ -248,9 +225,28 @@ describe('useObject', () => {
 
     expect(result.current[0].items[0]!.nested.count).toBe(1)
     const newNested = +result.current[0].items[0]!.nested
-    expect(Number.isNaN(newNested)).toBe(false)
-    if (!Number.isNaN(nestedSignal)) expect(newNested).toBeGreaterThan(nestedSignal)
-    else expect(newNested).toBeGreaterThan(0)
+    expect(newNested).toBeGreaterThan(nestedSignal)
+  })
+
+  test('noProxy prevents proxying of specified references', () => {
+    const shared: any = { nested: { count: 0 } }
+    const root: any = { shared }
+
+    const { result } = renderHook(() => useObject(root, [shared]))
+    const rootSignal = +result.current[0]
+    const sharedSignal = +result.current[0].shared
+
+    act(() => {
+      result.current[0].shared.nested.count = 1
+    })
+
+    expect(result.current[0].shared.nested.count).toBe(1)
+
+    const newSharedSignal = +result.current[0].shared
+    expect(newSharedSignal).toBe(sharedSignal)
+
+    const newRootSignal = +result.current[0]
+    expect(newRootSignal).toBe(rootSignal)
   })
 
   test('recursive references do not cause non-termination', () => {
@@ -267,8 +263,6 @@ describe('useObject', () => {
 
     expect(result.current[0].items[0].value).toBe(2)
     const newItemSignal = +result.current[0].items[0]
-    expect(Number.isNaN(newItemSignal)).toBe(false)
-    if (!Number.isNaN(itemSignal)) expect(newItemSignal).toBeGreaterThan(itemSignal)
-    else expect(newItemSignal).toBeGreaterThan(0)
+    expect(newItemSignal).toBeGreaterThan(itemSignal)
   })
 })
