@@ -34,9 +34,10 @@ function isPlainObject (value: unknown): value is object {
  * @param value         The value
  * @param update        The update function for mutations
  * @param objectTracker A set to keep track of transformed objects to prevent infinite recursions
+ * @param objectSignals A map to keep track of object signals for individual object state evaluation
  * @returns             The proxied variant (or the original value if unproxyable)
  */
-function transformValue<T> (value: T, update: () => void, objectTracker: WeakMap<any, any>): T {
+function transformValue<T> (value: T, update: (obj: any) => void, objectTracker: WeakMap<any, any>, objectSignals: WeakMap<any, number>): T {
   if (typeof value !== 'object' || value === null) return value
 
   const original = OG_OBJECT_LOOKUP.get(value)
@@ -45,8 +46,8 @@ function transformValue<T> (value: T, update: () => void, objectTracker: WeakMap
   const existing = objectTracker.get(value)
   if (existing) return existing
 
-  if (isPlainObject(value)) return proxyObject(value, update, objectTracker)
-  if (Array.isArray(value)) return proxyArray(value, update, objectTracker) as T
+  if (isPlainObject(value)) return proxyObject(value, update, objectTracker, objectSignals)
+  if (Array.isArray(value)) return proxyArray(value, update, objectTracker, objectSignals) as T
 
   return value
 }
@@ -57,9 +58,10 @@ function transformValue<T> (value: T, update: () => void, objectTracker: WeakMap
  * @param arr           The original array
  * @param update        The update callback
  * @param objectTracker A set to keep track of transformed objects to prevent infinite recursions
+ * @param objectSignals A map to keep track of object signals for individual object state evaluation
  * @returns             The stateful array
  */
-function proxyArray<T> (arr: T[], update: () => void, objectTracker: WeakMap<any, any>): T[] {
+function proxyArray<T> (arr: T[], update: (obj: any) => void, objectTracker: WeakMap<any, any>, objectSignals: WeakMap<any, number>): T[] {
   const original = OG_OBJECT_LOOKUP.get(arr)
   if (original) arr = original
   const existing = objectTracker.get(arr)
@@ -76,16 +78,16 @@ function proxyArray<T> (arr: T[], update: () => void, objectTracker: WeakMap<any
           let transformedArgs = args
 
           if (prop === 'push' || prop === 'unshift') {
-            transformedArgs = args.map((v) => transformValue(v, update, objectTracker))
+            transformedArgs = args.map((v) => transformValue(v, update, objectTracker, objectSignals))
           } else if (prop === 'splice' && args.length > 2) {
             transformedArgs = [
               args[0],
               args[1],
-              ...args.slice(2).map((v) => transformValue(v, update, objectTracker))
+              ...args.slice(2).map((v) => transformValue(v, update, objectTracker, objectSignals))
             ]
           } else if (prop === 'fill' && args.length > 0) {
             transformedArgs = [
-              transformValue(args[0], update, objectTracker),
+              transformValue(args[0], update, objectTracker, objectSignals),
               args[1],
               args[2]
             ]
@@ -93,7 +95,7 @@ function proxyArray<T> (arr: T[], update: () => void, objectTracker: WeakMap<any
 
           const result = value.apply(target, transformedArgs)
 
-          update()
+          update(proxy)
 
           return result
         }
@@ -106,9 +108,9 @@ function proxyArray<T> (arr: T[], update: () => void, objectTracker: WeakMap<any
       if (!active) return Reflect.set(target, prop, value, receiver)
 
       const oldValue = Reflect.get(target, prop, receiver)
-      const transformed = transformValue(value, update, objectTracker)
+      const transformed = transformValue(value, update, objectTracker, objectSignals)
 
-      if (transformed !== oldValue) update()
+      if (transformed !== oldValue) update(proxy)
 
       return Reflect.set(target, prop, transformed, receiver)
     }
@@ -117,9 +119,12 @@ function proxyArray<T> (arr: T[], update: () => void, objectTracker: WeakMap<any
   OG_OBJECT_LOOKUP.set(proxy, arr)
   objectTracker.set(arr, proxy)
 
+  objectSignals.set(proxy, 0)
+  proxy.valueOf = () => objectSignals.get(proxy) ?? NaN
+
   for (let i = 0; i < arr.length; ++i) {
     const element = proxy[i]
-    const transformed = transformValue(element, update, objectTracker)
+    const transformed = transformValue(element, update, objectTracker, objectSignals)
 
     proxy[i] = transformed as any
   }
@@ -133,10 +138,11 @@ function proxyArray<T> (arr: T[], update: () => void, objectTracker: WeakMap<any
  * Proxy an object recursively
  * @param object        The object
  * @param update        The function that updates the signal
- * @param objectTracker A set to keep track of transformed objects to prevent infinite recursions
+ * @param objectTracker A map to keep track of transformed objects to prevent infinite recursions
+ * @param objectSignals A map to keep track of object signals for individual object state evaluation
  * @returns             [The proxied object, a revocation function]
  */
-function proxyObject<T extends object> (object: T, update: () => void, objectTracker: WeakMap<any, any>): T {
+function proxyObject<T extends object> (object: T, update: (obj: any) => void, objectTracker: WeakMap<any, any>, objectSignals: WeakMap<any, number>): T {
   const original = OG_OBJECT_LOOKUP.get(object)
   if (original) object = original
   const existing = objectTracker.get(object)
@@ -147,9 +153,9 @@ function proxyObject<T extends object> (object: T, update: () => void, objectTra
     set (target, prop, newValue, receiver) {
       if (!active || prop === 'valueOf') return Reflect.set(target, prop, newValue, receiver)
 
-      const transformedValue = transformValue(newValue, update, objectTracker)
+      const transformedValue = transformValue(newValue, update, objectTracker, objectSignals)
 
-      if (target[prop as keyof typeof target] !== transformedValue) update()
+      if (target[prop as keyof typeof target] !== transformedValue) update(proxy)
 
       return Reflect.set(target, prop, transformedValue, receiver)
     },
@@ -157,7 +163,7 @@ function proxyObject<T extends object> (object: T, update: () => void, objectTra
     deleteProperty (target, prop) {
       if (!active) return Reflect.deleteProperty(target, prop)
 
-      if (prop in target) update()
+      if (prop in target) update(proxy)
 
       return Reflect.deleteProperty(target, prop)
     }
@@ -166,9 +172,12 @@ function proxyObject<T extends object> (object: T, update: () => void, objectTra
   OG_OBJECT_LOOKUP.set(proxy, object)
   objectTracker.set(object, proxy)
 
+  objectSignals.set(proxy, 0)
+  proxy.valueOf = () => objectSignals.get(proxy) ?? NaN
+
   for (const key in object) {
     const oldValue = object[key as keyof typeof object]
-    const transformed = transformValue(oldValue, update, objectTracker)
+    const transformed = transformValue(oldValue, update, objectTracker, objectSignals)
 
     object[key as keyof typeof object] = transformed as any
   }
@@ -191,14 +200,20 @@ export function useObject<T extends object> (initial: T): [object: T, setObject:
   const revoked = useRef(false)
   /** Keep track of transformed objects to prevent infinite recursions */
   const objectTracker = useRef(new WeakMap())
+  const objectSignals = useRef(new WeakMap<WeakKey, number>())
 
-  const [signal, setSignal] = useState(0)
+  const [_, setGeneralSignal] = useState(0)
   const [object, setObject] = useState(initial)
 
-  const proxy = useMemo(() => proxyObject(object, () => revoked.current ? undefined : setSignal((prior) => prior + 1), objectTracker.current), [object, setSignal])
+  const submitUpdate = useCallback((obj: any) => {
+    objectSignals.current.set(obj, (objectSignals.current.get(obj) ?? 0) + 1)
+    setGeneralSignal((prior) => prior + 1)
+  }, [])
+
+  const proxy = useMemo(() => proxyObject(object, (obj: any) => revoked.current ? undefined : submitUpdate(obj), objectTracker.current, objectSignals.current), [object])
 
   const forceUpdate = useCallback(() =>
-    setSignal((prior) => prior + 1)
+    setGeneralSignal((prior) => prior + 1)
   , [])
 
   useEffect(() => {
@@ -206,6 +221,5 @@ export function useObject<T extends object> (initial: T): [object: T, setObject:
     return () => { revoked.current = true }
   }, [])
 
-  proxy.valueOf = () => signal
   return [proxy, setObject, forceUpdate]
 }
