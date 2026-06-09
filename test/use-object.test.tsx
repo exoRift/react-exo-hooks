@@ -3,7 +3,7 @@
 import { describe, expect, test } from 'bun:test'
 import { act, renderHook } from '@testing-library/react'
 
-import { useObject } from '../src/hooks/use-object'
+import { useObject, getUnproxiedObject } from '../src/hooks/use-object'
 
 describe('useObject', () => {
   test('mutating a nested property updates the signal', () => {
@@ -264,5 +264,25 @@ describe('useObject', () => {
     expect(result.current[0].items[0].value).toBe(2)
     const newItemSignal = +result.current[0].items[0]
     expect(newItemSignal).toBeGreaterThan(itemSignal)
+  })
+
+  test('getUnproxiedObject returns the original objects without proxy signals', () => {
+    const initial: any = { foo: { bar: 'a' }, items: [{ nested: { count: 0 } }] }
+    initial.self = initial
+
+    const { result } = renderHook(() => useObject(initial))
+
+    const proxied = result.current[0]
+
+    expect(typeof +proxied.foo, 'proxied objects expose signals via valueOf').toBe('number')
+    expect(typeof +proxied.items[0]!.nested, 'proxied objects expose signals via valueOf').toBe('number')
+
+    const unproxied = getUnproxiedObject(proxied)
+
+    expect(unproxied.foo.bar, 'unproxied should preserve data').toBe('a')
+    expect(unproxied.items[0].nested.count, 'unproxied should preserve data').toBe(0)
+
+    expect(Number.isNaN(+unproxied.foo), 'but should not expose the proxy signal (coercion yields NaN)').toBe(true)
+    expect(Number.isNaN(+unproxied.items[0].nested), 'but should not expose the proxy signal (coercion yields NaN)').toBe(true)
   })
 })

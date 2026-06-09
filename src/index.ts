@@ -19,7 +19,8 @@ export {
 } from './hooks/use-array.js'
 
 export {
-  useObject
+  useObject,
+  getUnproxiedObject
 } from './hooks/use-object.js'
 
 export {

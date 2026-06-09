@@ -71,9 +71,13 @@ function proxyArray<T> (arr: T[], update: (obj: any) => void, noProxyProperties:
   const existing = OBJECT_TRACKER.get(arr)
   if (existing) return existing
 
+  const valueOf = (): number => OBJECT_SIGNALS.get(proxy) ?? NaN
+
   let active = false
   const proxy = new Proxy(arr, {
     get (target, prop, receiver) {
+      if (prop === 'valueOf' || prop === Symbol.toPrimitive) return valueOf
+
       if (!active) return Reflect.get(target, prop, receiver)
       const value = Reflect.get(target, prop, receiver)
 
@@ -124,7 +128,6 @@ function proxyArray<T> (arr: T[], update: (obj: any) => void, noProxyProperties:
   OBJECT_TRACKER.set(arr, proxy)
 
   OBJECT_SIGNALS.set(proxy, 0)
-  proxy.valueOf = () => OBJECT_SIGNALS.get(proxy) ?? NaN
 
   for (let i = 0; i < arr.length; ++i) {
     const element = proxy[i]
@@ -151,8 +154,16 @@ function proxyObject<T extends object> (object: T, update: (obj: any) => void, n
   const existing = OBJECT_TRACKER.get(object)
   if (existing) return existing
 
+  const valueOf = (): number => OBJECT_SIGNALS.get(proxy) ?? NaN
+
   let active = false
   const proxy = new Proxy(object, {
+    get (target, prop, receiver) {
+      if (prop === 'valueOf' || prop === Symbol.toPrimitive) return valueOf
+
+      return Reflect.get(target, prop, receiver)
+    },
+
     set (target, prop, newValue, receiver) {
       if (!active || prop === 'valueOf') return Reflect.set(target, prop, newValue, receiver)
 
@@ -178,7 +189,6 @@ function proxyObject<T extends object> (object: T, update: (obj: any) => void, n
   OBJECT_TRACKER.set(object, proxy)
 
   OBJECT_SIGNALS.set(proxy, 0)
-  proxy.valueOf = () => OBJECT_SIGNALS.get(proxy) ?? NaN
 
   for (const key in object) {
     if (noProxyProperties.has(key)) continue
@@ -236,4 +246,43 @@ export function useObject<T extends object> (initial: T, noProxyProperties?: Arr
   }, [])
 
   return [proxy, setObject, forceUpdate]
+}
+
+/**
+ * Get an unproxied object, deeply unproxying all properties
+ * @param obj     The object to unproxy
+ * @param tracker A tracker of already-unproxied objects to prevent infinite recurrence
+ * @returns       The unproxied object
+ */
+function _getUnproxiedObject<T> (obj: T, tracker: WeakMap<any, any>): T {
+  if (typeof obj !== 'object' || obj === null) return obj
+
+  const tracked = tracker.get(obj)
+  if (tracked) return tracked
+
+  const unproxied = OG_OBJECT_LOOKUP.get(obj) ?? obj
+  tracker.set(obj, unproxied)
+
+  if (Array.isArray(unproxied)) {
+    for (let i = 0; i < unproxied.length; ++i) {
+      unproxied[i] = _getUnproxiedObject(unproxied[i], tracker)
+    }
+  } else {
+    for (const key in unproxied) {
+      unproxied[key] = _getUnproxiedObject(unproxied[key], tracker)
+    }
+  }
+
+  return unproxied
+}
+
+/**
+ * Get an unproxied object, deeply unproxying all properties
+ * @param obj The object to unproxy
+ * @returns   The unproxied object
+ */
+export function getUnproxiedObject<T> (obj: T): T {
+  const tracker = new WeakMap()
+
+  return _getUnproxiedObject(obj, tracker)
 }
