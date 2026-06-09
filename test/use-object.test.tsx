@@ -285,4 +285,29 @@ describe('useObject', () => {
     expect(Number.isNaN(+unproxied.foo), 'but should not expose the proxy signal (coercion yields NaN)').toBe(true)
     expect(Number.isNaN(+unproxied.items[0].nested), 'but should not expose the proxy signal (coercion yields NaN)').toBe(true)
   })
+
+  test('using the same object multiple times yields independent signals but shared data', () => {
+    const shared: any = { nested: { count: 0 } }
+    const rootA: any = { shared }
+    const rootB: any = { shared }
+
+    const { result: rA } = renderHook(() => useObject(rootA))
+    const { result: rB } = renderHook(() => useObject(rootB))
+
+    const aSignal = +rA.current[0].shared
+    const bSignal = +rB.current[0].shared
+
+    act(() => {
+      rA.current[0].shared.nested.count = 1
+    })
+
+    expect(rA.current[0].shared.nested.count).toBe(1)
+    expect(rB.current[0].shared.nested.count).toBe(1)
+
+    const newASignal = +rA.current[0].shared
+    const newBSignal = +rB.current[0].shared
+
+    expect(newASignal).toBeGreaterThan(aSignal)
+    expect(newBSignal).toBe(bSignal)
+  })
 })
