@@ -228,11 +228,11 @@ describe('useObject', () => {
     expect(newNested).toBeGreaterThan(nestedSignal)
   })
 
-  test('noProxy prevents proxying of specified references', () => {
+  test('noProxyProperties prevents proxying of specified property keys', () => {
     const shared: any = { nested: { count: 0 } }
     const root: any = { shared }
 
-    const { result } = renderHook(() => useObject(root, [shared]))
+    const { result } = renderHook(() => useObject(root, ['shared']))
     const rootSignal = +result.current[0]
     const sharedSignal = +result.current[0].shared
 
