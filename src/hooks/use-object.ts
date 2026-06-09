@@ -35,17 +35,17 @@ function isProxyableObject (value: unknown): value is object {
 
 /**
  * Transform a value into its proxied variant, if available
- * @param value             The value
- * @param update            The update function for mutations
- * @param objectTracker     A map to keep track of transformed objects to prevent infinite recursions
- * @param noProxyProperties A list of property keys to ignore when generating proxies
- * @returns                 The proxied variant (or the original value if unproxyable)
+ * @param value            The value
+ * @param update           The update function for mutations
+ * @param objectTracker    A map to keep track of transformed objects to prevent infinite recursions
+ * @param ignoreProperties A list of property keys to ignore when generating proxies / listening for changes
+ * @returns                The proxied variant (or the original value if unproxyable)
  */
-function transformValue<T> (value: T, update: (obj: any) => void, objectTracker: Map<any, any>, noProxyProperties: Set<string | symbol>): T {
+function transformValue<T> (value: T, update: (obj: any) => void, objectTracker: Map<any, any>, ignoreProperties: Set<string | symbol>): T {
   if (typeof value !== 'object' || value === null) return value
 
-  if (Array.isArray(value)) return proxyArray(value, update, objectTracker, noProxyProperties) as T
-  else if (isProxyableObject(value)) return proxyObject(value, update, objectTracker, noProxyProperties)
+  if (Array.isArray(value)) return proxyArray(value, update, objectTracker, ignoreProperties) as T
+  else if (isProxyableObject(value)) return proxyObject(value, update, objectTracker, ignoreProperties)
 
   return value
 }
@@ -53,13 +53,13 @@ function transformValue<T> (value: T, update: (obj: any) => void, objectTracker:
 /**
  * Convert an array to be a StatefulArray
  * @warn Mutates the original array
- * @param arr               The original array
- * @param update            The update callback
- * @param objectTracker     A map to keep track of transformed objects to prevent infinite recursions
- * @param noProxyProperties A list of property keys to ignore when generating proxies
- * @returns                 The stateful array
+ * @param arr              The original array
+ * @param update           The update callback
+ * @param objectTracker    A map to keep track of transformed objects to prevent infinite recursions
+ * @param ignoreProperties A list of property keys to ignore when generating proxies / listening for changes
+ * @returns                The stateful array
  */
-function proxyArray<T> (arr: T[], update: (obj: any) => void, objectTracker: Map<any, any>, noProxyProperties: Set<string | symbol>): T[] {
+function proxyArray<T> (arr: T[], update: (obj: any) => void, objectTracker: Map<any, any>, ignoreProperties: Set<string | symbol>): T[] {
   const original = OG_OBJECT_LOOKUP.get(arr)
   if (original) arr = original
   const existing = objectTracker.get(arr)
@@ -79,16 +79,16 @@ function proxyArray<T> (arr: T[], update: (obj: any) => void, objectTracker: Map
           let transformedArgs = args
 
           if (prop === 'push' || prop === 'unshift') {
-            transformedArgs = args.map((v) => transformValue(v, subUpdate, objectTracker, noProxyProperties))
+            transformedArgs = args.map((v) => transformValue(v, subUpdate, objectTracker, ignoreProperties))
           } else if (prop === 'splice' && args.length > 2) {
             transformedArgs = [
               args[0],
               args[1],
-              ...args.slice(2).map((v) => transformValue(v, subUpdate, objectTracker, noProxyProperties))
+              ...args.slice(2).map((v) => transformValue(v, subUpdate, objectTracker, ignoreProperties))
             ]
           } else if (prop === 'fill' && args.length > 0) {
             transformedArgs = [
-              transformValue(args[0], subUpdate, objectTracker, noProxyProperties),
+              transformValue(args[0], subUpdate, objectTracker, ignoreProperties),
               args[1],
               args[2]
             ]
@@ -100,13 +100,13 @@ function proxyArray<T> (arr: T[], update: (obj: any) => void, objectTracker: Map
 
           return result
         }
-      } else if (typeof prop === 'string' && !isNaN(Number(prop))) return transformValue(value, subUpdate, objectTracker, noProxyProperties)
+      } else if (typeof prop === 'string' && !isNaN(Number(prop))) return transformValue(value, subUpdate, objectTracker, ignoreProperties)
       else return value
     },
 
     set (target, prop, value, receiver) {
       const oldValue = Reflect.get(target, prop, receiver)
-      const transformed = transformValue(value, subUpdate, objectTracker, noProxyProperties)
+      const transformed = transformValue(value, subUpdate, objectTracker, ignoreProperties)
 
       if (transformed !== oldValue) update(proxy)
 
@@ -124,13 +124,13 @@ function proxyArray<T> (arr: T[], update: (obj: any) => void, objectTracker: Map
 
 /**
  * Proxy an object recursively
- * @param object            The object
- * @param update            The function that updates the signal
- * @param objectTracker     A map to keep track of transformed objects to prevent infinite recursions
- * @param noProxyProperties A list of property keys to ignore when generating proxies
- * @returns                 [The proxied object, a revocation function]
+ * @param object           The object
+ * @param update           The function that updates the signal
+ * @param objectTracker    A map to keep track of transformed objects to prevent infinite recursions
+ * @param ignoreProperties A list of property keys to ignore when generating proxies / listening for changes
+ * @returns                [The proxied object, a revocation function]
  */
-function proxyObject<T extends object> (object: T, update: (obj: any) => void, objectTracker: Map<any, any>, noProxyProperties: Set<string | symbol>): T {
+function proxyObject<T extends object> (object: T, update: (obj: any) => void, objectTracker: Map<any, any>, ignoreProperties: Set<string | symbol>): T {
   const original = OG_OBJECT_LOOKUP.get(object)
   if (original) object = original
   const existing = objectTracker.get(object)
@@ -145,16 +145,16 @@ function proxyObject<T extends object> (object: T, update: (obj: any) => void, o
 
       const value = Reflect.get(target, prop, receiver)
 
-      if (!noProxyProperties.has(prop)) return transformValue(value, subUpdate, objectTracker, noProxyProperties)
+      if (!ignoreProperties.has(prop)) return transformValue(value, subUpdate, objectTracker, ignoreProperties)
       else return value
     },
 
     set (target, prop, newValue, receiver) {
-      if (prop === 'valueOf') return Reflect.set(target, prop, newValue, receiver)
+      if (prop === 'valueOf' || ignoreProperties.has(prop)) return Reflect.set(target, prop, newValue, receiver)
 
-      const transformedValue = noProxyProperties.has(prop)
+      const transformedValue = ignoreProperties.has(prop)
         ? newValue
-        : transformValue(newValue, subUpdate, objectTracker, noProxyProperties)
+        : transformValue(newValue, subUpdate, objectTracker, ignoreProperties)
 
       if (target[prop as keyof typeof target] !== transformedValue) update(proxy)
 
@@ -162,7 +162,7 @@ function proxyObject<T extends object> (object: T, update: (obj: any) => void, o
     },
 
     deleteProperty (target, prop) {
-      if (prop in target) update(proxy)
+      if (prop in target && !ignoreProperties.has(prop)) update(proxy)
 
       return Reflect.deleteProperty(target, prop)
     }
@@ -184,11 +184,11 @@ function proxyObject<T extends object> (object: T, update: (obj: any) => void, o
  * @note Effects and memos that use this object should also listen for its signal: `+INSTANCE`.\
  * You can call +obj on this object or any nested object/array\
  * (Example: `+root - +root.prop` will listen for changes to `root` while ignoring changes to `root.prop`)
- * @param initial           The initial object
- * @param noProxyProperties A list of property keys to ignore when generating proxies
- * @returns                 [object, setObject, forceUpdate]
+ * @param initial          The initial object
+ * @param ignoreProperties A list of property keys to ignore when generating proxies / listening for changes
+ * @returns                [object, setObject, forceUpdate]
  */
-export function useObject<T extends object> (initial: T, noProxyProperties?: Array<string | symbol>): [
+export function useObject<T extends object> (initial: T, ignoreProperties?: Array<string | symbol>): [
   /** The object, deeply proxied. Any generic object or array property can have its update signal gotten with +obj */
   object: T,
   /** Set the root object value to some new object */
@@ -209,7 +209,7 @@ export function useObject<T extends object> (initial: T, noProxyProperties?: Arr
     setGeneralSignal((prior) => prior + 1)
   }, [])
 
-  const proxy = useMemo(() => transformValue(object, (obj: any) => revoked.current ? undefined : submitUpdate(obj), objectTracker.current, new Set(noProxyProperties)), [object])
+  const proxy = useMemo(() => transformValue(object, (obj: any) => revoked.current ? undefined : submitUpdate(obj), objectTracker.current, new Set(ignoreProperties)), [object])
 
   const forceUpdate = useCallback(() =>
     setGeneralSignal((prior) => prior + 1)

@@ -228,7 +228,7 @@ describe('useObject', () => {
     expect(newNested).toBeGreaterThan(nestedSignal)
   })
 
-  test('noProxyProperties prevents proxying of specified property keys', () => {
+  test('ignoreProperties prevents proxying of specified property keys', () => {
     const shared: any = { nested: { count: 0 } }
     const root: any = { shared }
 
@@ -244,6 +244,22 @@ describe('useObject', () => {
 
     const newSharedSignal = +result.current[0].shared
     expect(newSharedSignal).toBe(sharedSignal)
+
+    const newRootSignal = +result.current[0]
+    expect(newRootSignal).toBe(rootSignal)
+  })
+
+  test('ignoreProperties with primitive property does not change signal on update', () => {
+    const root: any = { value: 0 }
+
+    const { result } = renderHook(() => useObject(root, ['value']))
+    const rootSignal = +result.current[0]
+
+    act(() => {
+      result.current[0].value = 1
+    })
+
+    expect(result.current[0].value).toBe(1)
 
     const newRootSignal = +result.current[0]
     expect(newRootSignal).toBe(rootSignal)
