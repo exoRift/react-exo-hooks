@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from 'bun:test'
 import { act, renderHook } from '@testing-library/react'
+import { useCallback, useMemo } from 'react'
 
 import { useObject, getUnproxiedObject } from '../src/hooks/use-object'
 
@@ -325,5 +326,48 @@ describe('useObject', () => {
 
     expect(newASignal).toBeGreaterThan(aSignal)
     expect(newBSignal).toBe(bSignal)
+  })
+
+  test('stale proxies are not reused after setObject', () => {
+    const shared: any = { value: 1 }
+    const { result } = renderHook(() => useObject(shared))
+
+    const firstProxy = result.current[0]
+
+    act(() => {
+      result.current[1]({ other: true })
+    })
+
+    act(() => {
+      result.current[1](shared)
+    })
+
+    expect(result.current[0], 'not return the stale proxy instance that was created earlier').not.toBe(firstProxy)
+    expect(result.current[0].value).toBe(1)
+  })
+
+  test('memoized callback updates the new object after setObject', () => {
+    const { result } = renderHook(() => {
+      const [obj, setObject] = useObject({ prop: [{ foo: { foobar: 'bar' } }] })
+      const prop = obj.prop[0]!
+      const cb = useCallback(() => { prop.foo.foobar = 'baz' }, [prop])
+      const memoed = useMemo(() => prop.foo.foobar, [prop, +prop])
+      return { obj, setObject, cb, memoed }
+    })
+
+    expect(result.current.memoed).toBe('bar')
+
+    const newInstance = { prop: [{ foo: { foobar: 'bar' } }] }
+
+    act(() => {
+      result.current.setObject(newInstance)
+    })
+
+    // invoke the memoized callback which should have been updated to the new `obj`
+    act(() => {
+      result.current.cb()
+    })
+
+    expect(result.current.memoed).toBe('baz')
   })
 })

@@ -196,12 +196,13 @@ export function useObject<T extends object> (initial: T, ignoreProperties?: Arra
   /** Force the root object to undergo a state increment for rerender */
   forceUpdate: () => void
 ] {
-  const revoked = useRef(false)
   /** A map to keep track of transformed objects to prevent infinite recursions */
   const objectTracker = useRef(new Map())
 
   const [_, setGeneralSignal] = useState(0)
   const [object, setObject] = useState(initial)
+
+  const revoker = useMemo(() => ({ revoked: false }), [object])
 
   const submitUpdate = useCallback((obj: any) => {
     const oldSignal = OBJECT_SIGNALS.get(obj)
@@ -209,15 +210,25 @@ export function useObject<T extends object> (initial: T, ignoreProperties?: Arra
     setGeneralSignal((prior) => prior + 1)
   }, [])
 
-  const proxy = useMemo(() => transformValue(object, (obj: any) => revoked.current ? undefined : submitUpdate(obj), objectTracker.current, new Set(ignoreProperties)), [object])
+  const proxy = useMemo(() => {
+    // Prevent stale proxies from being served
+    objectTracker.current.clear()
+
+    return transformValue(
+      object,
+      (obj: any) => revoker.revoked ? undefined : submitUpdate(obj),
+      objectTracker.current,
+      new Set(ignoreProperties)
+    )
+  }, [object])
 
   const forceUpdate = useCallback(() =>
     setGeneralSignal((prior) => prior + 1)
   , [])
 
   useEffect(() => {
-    revoked.current = false
-    return () => { revoked.current = true }
+    revoker.revoked = false
+    return () => { revoker.revoked = true }
   }, [])
 
   return [proxy, setObject, forceUpdate]
