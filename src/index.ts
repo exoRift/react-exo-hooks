@@ -25,3 +25,7 @@ export {
 export {
   useUnsaved
 } from './hooks/use-unsaved.js'
+
+export {
+  useArrayMemo
+} from './hooks/use-array-memo.js'

@@ -40,9 +40,9 @@ function Component () {
 ```
 
 ## useSet
-A Set. Rerenders upon mutation. Listen for update signal with `+`
+A Set. Rerenders upon mutation
 > [!TIP]
-> Force state update with `set.forceUpdate()`
+> Force state updates with `set.forceUpdate()`
 ```tsx
 function Component () {
   const set = useSet<string>()
@@ -59,9 +59,9 @@ function Component () {
 ```
 
 ## useMap
-A Map. Rerenders upon mutation. Listen for update signal with `+`
+A Map. Rerenders upon mutation
 > [!TIP]
-> Force state update with `map.forceUpdate()`
+> Force state updates with `map.forceUpdate()`
 ```tsx
 function Component () {
   const map = useMap<string, number>()
@@ -77,35 +77,38 @@ function Component () {
 }
 ```
 
-## useArray
-An Array. Rerenders upon mutation. Listen for update signal with `+`
-> [!TIP]
-> Force state update with `array.forceUpdate()`
-```tsx
-function Component () {
-  const array = useArray<string>()
-
-  useEffect(() => {
-    console.log('array items:', array.join(', '))
-  }, [array, +array])
-
-  return (
-    <button onClick={() => array.push('foo')}>CLICK ME</button>
-  )
-}
-```
-
 ## useObject
-An Object. Rerenders on mutation. Will recursively listen on simple children (not class instances).
+An Object or array. Rerenders on mutation. Will recursively listen on object/array children (not class instances)
 > [!TIP]
-> Force state update with `forceUpdate()`, the third item of the tuple
+> Force state updates with `forceUpdate()`, the third item of the tuple
 ```tsx
 function Component () {
   const [object, setObject] = useObject({ foo: { bar: 'baz' } })
 
   useEffect(() => {
     console.log('Object updated!', object)
-  }, [object, +object])
+  }, [object])
+
+  useEffect(() => {
+    console.log('Foo updated!', object.foo)
+  }, [object.foo])
+
+  return (
+    <button onClick={() => { object.foo.bar = 'foobar' }}>CLICK ME</button>
+  )
+}
+```
+
+## useArrayMemo
+Memoize changing array references if the contents remain the same
+```tsx
+function Component ({ array }: { array: string[] }) {
+  const memoed = useArrayMemo(array)
+
+  // Only runs if the contents of the array are different
+  useEffect(() => {
+    console.log('Array updated!', memoed)
+  }, [memoed])
 
   return (
     <button onClick={() => { object.foo.bar = 'foobar' }}>CLICK ME</button>
