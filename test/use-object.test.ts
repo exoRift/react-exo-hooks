@@ -194,6 +194,29 @@ describe('useObject', () => {
     expect(newItemsSignal).not.toBe(initialSignal)
   })
 
+  test('object mutations after unmount do not update the signal', () => {
+    const { result, unmount } = renderHook(() => useObject({ foo: { bar: 'a' } }))
+    const fooSignal = result.current[0].foo
+
+    unmount()
+
+    result.current[0].foo.bar = 'z'
+    const newFoo = result.current[0].foo
+    expect(newFoo).toBe(fooSignal)
+  })
+
+  test('array mutations after unmount do not update the signal', () => {
+    const { result, unmount } = renderHook(() => useObject({ items: ['a'] }))
+    const itemsSignal = result.current[0].items
+
+    unmount()
+
+    result.current[0].items.push('b')
+    expect(result.current[0].items.length).toBe(2)
+    const newItems = result.current[0].items
+    expect(newItems).toBe(itemsSignal)
+  })
+
   test('object inside array inside object is proxied', () => {
     const { result } = renderHook(() => useObject({ items: [{ nested: { count: 0 } }] }))
     const nestedSignal = result.current[0].items[0]!.nested
@@ -346,5 +369,15 @@ describe('useObject', () => {
     })
 
     expect(result.current.memoed).toBe('baz')
+  })
+
+  test('array .at() works', () => {
+    const { result } = renderHook(() => {
+      const [arr] = useObject([123])
+
+      return arr
+    })
+
+    expect(result.current.at(0)).toBe(123)
   })
 })

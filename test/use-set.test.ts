@@ -6,20 +6,24 @@ import { useSet } from '../src/hooks/use-set'
 describe('useSet', () => {
   test('add and delete update size and signal', () => {
     const { result } = renderHook(() => useSet<string>())
+    const initialSignal = result.current
 
     act(() => {
       result.current.add('a')
     })
 
+    const nextSignal = result.current
+
     expect(result.current.has('a')).toBe(true)
-    expect(+result.current).toBe(1)
+    expect(nextSignal).not.toBe(initialSignal)
 
     act(() => {
       result.current.delete('a')
     })
 
     expect(result.current.has('a')).toBe(false)
-    expect(+result.current).toBe(0)
+    expect(result.current).not.toBe(initialSignal)
+    expect(result.current).not.toBe(nextSignal)
   })
 
   test('toggle flips membership', () => {

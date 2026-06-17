@@ -1,121 +1,108 @@
-import { type SetStateAction, useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 
 /**
- * This is a set that causes rerenders on updates
- * @note Effects and memos that use this set should also listen for its signal: `+INSTANCE`
+ * A set that rerenders on changes
  */
 export class StatefulSet<T> extends Set<T> {
-  /** The dispatch function for the signal */
-  protected readonly _dispatchSignal?: React.Dispatch<SetStateAction<number>>
-  /** THe dispatch function for redefining the set */
-  protected _dispatchRedefine?: React.Dispatch<SetStateAction<StatefulSet<T>>>
-
-  /**
-   * Construct a StatefulSet
-   * @param initial        The initial value (parameter for a vanilla set)
-   * @param dispatchSignal The dispatch function for the signal
-   */
-  constructor (initial?: Iterable<T>, dispatchSignal?: StatefulSet<T>['_dispatchSignal']) {
-    super(initial)
-    this._dispatchSignal = dispatchSignal
-  }
-
-  /**
-   * Set the redefine dispatch
-   * @private
-   * @param callback The function
-   */
-  _setRedefine (callback: StatefulSet<T>['_dispatchRedefine']): void {
-    this._dispatchRedefine = callback
-  }
-
-  /**
-   * Force a signal update
-   */
-  forceUpdate (): void {
-    this._dispatchSignal?.(-Math.random())
-  }
-
-  /**
-   * Set the instance to an entirely new instance
-   * @param           value The new instance
-   * @returns               The new instance
-   * @throws  {Error}       If there's no redefinition callback defined
-   */
-  reset (value: Iterable<T>): Iterable<T> {
-    if (!this._dispatchRedefine) throw new Error('Cannot redefine Set. No redefine callback set.')
-    const instance = new StatefulSet(value, this._dispatchSignal)
-
-    this._dispatchRedefine(instance)
-    instance._dispatchSignal?.(instance.size)
-
-    return instance
-  }
-
-  /**
-   * @override
-   */
-  override add (value: T): this {
-    super.add(value)
-    this._dispatchSignal?.(super.size)
-    return this
-  }
-
-  /**
-   * @override
-   */
-  override delete (value: T): boolean {
-    const returnValue = super.delete(value)
-    this._dispatchSignal?.(super.size)
-    return returnValue
-  }
-
-  /**
-   * @override
-   */
-  override clear (): void {
-    super.clear()
-    this._dispatchSignal?.(super.size)
-  }
+  /** Force an update to register on the set */
+  forceUpdate: () => void = () => {}
+  /** Set the instance to an entirely new instance */
+  reset: (source: ConstructorParameters<typeof Set<T>>[0]) => void = () => {}
 
   /**
    * Toggle if an element is present within the set
-   * @note This is a custom set method
    * @param value The value to toggle
    * @returns     The new state: true if the value is now in the set, false if the value is now not in the set
    */
   toggle (value: T): boolean {
     if (super.has(value)) {
       super.delete(value)
-      this._dispatchSignal?.(super.size)
+      this.forceUpdate()
       return false
     } else {
       super.add(value)
-      this._dispatchSignal?.(super.size)
+      this.forceUpdate()
       return false
     }
   }
+}
 
-  /**
-   * Returns the set's signal. Used for effects and memos that use this set
-   * @returns A numeric signal
-   */
-  override valueOf (): number {
-    return this.size
-  }
+const SET_MUTATORS = new Set<string>([
+  'add',
+  'delete',
+  'clear'
+] satisfies Array<keyof Set<any>>)
+
+/**
+ * Proxy a set for updates
+ * @param set    The set
+ * @param update The update callback
+ * @returns      The proxied set
+ */
+function proxySet<T extends Set<any>> (set: T, update: () => void): T {
+  const proxy = new Proxy(set, {
+    get (target, prop, receiver) {
+      const value: any = Reflect.get(target, prop, receiver)
+
+      if (typeof prop === 'string' && SET_MUTATORS.has(prop)) {
+        return (...args: unknown[]) => {
+          switch (prop) {
+            case 'add': {
+              const key = args[0]
+
+              if (!target.has(key)) update()
+              break
+            }
+            case 'clear':
+              if (target.size) update()
+              break
+            case 'delete':
+              if (target.has(args[0])) update()
+              break
+          }
+
+          const ret = value.apply(target, args)
+          return ret === set
+            ? proxy
+            : ret
+        }
+      } else if (typeof value === 'function') return value.bind(target)
+      else return value
+    },
+
+    set (target, prop, value, receiver) {
+      const oldValue = Reflect.get(target, prop, receiver)
+
+      if (value !== oldValue) update()
+
+      return Reflect.set(target, prop, value, receiver)
+    }
+  })
+
+  return proxy
 }
 
 /**
  * Create a clone of a set that updates on mutation
- * @note Any effects or memos that use this set should also listen for its signal (`+INSTANCE`)
- * @param initial The initial set value
- * @returns       The stately set
+ * @param source The source set or entry data
+ * @returns      The stateful set
  */
-export function useSet<T> (initial?: Iterable<T>): StatefulSet<T> {
-  const [, setSignal] = useState(Array.isArray(initial) ? initial.length : initial instanceof Set ? initial.size : 0)
-  const [set, setSet] = useState(new StatefulSet(initial, setSignal))
+export function useSet<T> (source?: ConstructorParameters<typeof Set<T>>[0]): StatefulSet<T> {
+  const revoked = useRef(false)
+  const [signal, setSignal] = useState(0)
 
-  useEffect(() => set._setRedefine(setSet), [set])
+  const [map, _setMap] = useState(new StatefulSet(source))
+  const setMap = useCallback((source: ConstructorParameters<typeof Set<T>>[0]) => _setMap(new StatefulSet(source)), [])
+  const update = useCallback(() => revoked.current ? undefined : setSignal((prior) => prior + 1), [])
+  map.forceUpdate = update
+  map.reset = setMap
 
-  return set
+  const proxy = useMemo(() => proxySet(map, update), [map, signal])
+
+  useEffect(() => {
+    revoked.current = false
+    return () => { revoked.current = true }
+  }, [])
+
+  return proxy
 }

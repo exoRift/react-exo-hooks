@@ -14,11 +14,6 @@ export {
 } from './hooks/use-promise.js'
 
 export {
-  StatefulArray,
-  useArray
-} from './hooks/use-array.js'
-
-export {
   useObject,
   getUnproxiedObject
 } from './hooks/use-object.js'

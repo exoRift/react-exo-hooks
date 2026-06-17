@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 /** A map to get the original object from a proxy */
 const OG_OBJECT_LOOKUP = new WeakMap()
@@ -42,15 +42,25 @@ function isProxyableObject (value: unknown): value is object {
 function transformValue<T> (value: T, update: (obj: any) => void, objectTracker: Map<any, any>, ignoreProperties: Set<string | symbol>): T {
   if (typeof value !== 'object' || value === null) return value
 
-  if (Array.isArray(value)) return proxyArray(value, update, objectTracker, ignoreProperties) as T
-  else if (isProxyableObject(value)) return proxyObject(value, update, objectTracker, ignoreProperties)
+  const original = OG_OBJECT_LOOKUP.get(value)
+  if (original) value = original
+  const existing = objectTracker.get(value)
+  if (existing) return existing
 
-  return value
+  let proxy
+
+  if (Array.isArray(value)) proxy = proxyArray(value, update, objectTracker, ignoreProperties) as T
+  else if (isProxyableObject(value)) proxy = proxyObject(value, update, objectTracker, ignoreProperties)
+  else return value
+
+  OG_OBJECT_LOOKUP.set(proxy as object, value)
+  objectTracker.set(value, proxy)
+
+  return proxy
 }
 
 /**
- * Convert an array to be a StatefulArray
- * @warn Mutates the original array
+ * Proxy an array recursively for updates
  * @param arr              The original array
  * @param update           The update callback
  * @param objectTracker    A map to keep track of transformed objects to prevent infinite recursions
@@ -58,11 +68,6 @@ function transformValue<T> (value: T, update: (obj: any) => void, objectTracker:
  * @returns                The stateful array
  */
 function proxyArray<T> (arr: T[], update: (obj: any) => void, objectTracker: Map<any, any>, ignoreProperties: Set<string | symbol>): T[] {
-  const original = OG_OBJECT_LOOKUP.get(arr)
-  if (original) arr = original
-  const existing = objectTracker.get(arr)
-  if (existing) return existing
-
   const subUpdate = (subObj: any): void => { update(proxy); update(subObj) }
 
   const proxy = new Proxy(arr, {
@@ -89,7 +94,7 @@ function proxyArray<T> (arr: T[], update: (obj: any) => void, objectTracker: Map
             ]
           }
 
-          const result = value.apply(target, transformedArgs)
+          const result = value.apply(receiver, transformedArgs)
 
           update(proxy)
 
@@ -109,14 +114,11 @@ function proxyArray<T> (arr: T[], update: (obj: any) => void, objectTracker: Map
     }
   })
 
-  OG_OBJECT_LOOKUP.set(proxy, arr)
-  objectTracker.set(arr, proxy)
-
   return proxy
 }
 
 /**
- * Proxy an object recursively
+ * Proxy an object recursively for updates
  * @param object           The object
  * @param update           The function that updates the signal
  * @param objectTracker    A map to keep track of transformed objects to prevent infinite recursions
@@ -124,11 +126,6 @@ function proxyArray<T> (arr: T[], update: (obj: any) => void, objectTracker: Map
  * @returns                [The proxied object, a revocation function]
  */
 function proxyObject<T extends object> (object: T, update: (obj: any) => void, objectTracker: Map<any, any>, ignoreProperties: Set<string | symbol>): T {
-  const original = OG_OBJECT_LOOKUP.get(object)
-  if (original) object = original
-  const existing = objectTracker.get(object)
-  if (existing) return existing
-
   const subUpdate = (subObj: any): void => { update(proxy); update(subObj) }
 
   const proxy = new Proxy(object, {
@@ -158,9 +155,6 @@ function proxyObject<T extends object> (object: T, update: (obj: any) => void, o
     }
   })
 
-  OG_OBJECT_LOOKUP.set(proxy, object)
-  objectTracker.set(object, proxy)
-
   return proxy
 }
 
@@ -184,21 +178,24 @@ export function useObject<T extends object> (initial: T, ignoreProperties?: Arra
 ] {
   /** A map to keep track of transformed objects to prevent infinite recursions */
   const objectTracker = useRef(new Map())
+  const revoked = useRef(false)
 
   const [_object, _setObject] = useState(initial)
-  const [, setGeneralSignal] = useState(0)
+  const [, setSignal] = useState(0)
 
   const forceUpdate = useCallback(() => {
+    if (revoked.current) return
     objectTracker.current.clear()
-    setGeneralSignal((prior) => prior + 1)
+    setSignal((prior) => prior + 1)
   }, [])
   const setObject = useCallback<typeof _setObject>((val) => {
     forceUpdate()
     _setObject(val)
   }, [forceUpdate])
   const deleteEntry = useCallback((obj: any) => {
+    if (revoked.current) return
     objectTracker.current.delete(OG_OBJECT_LOOKUP.get(obj))
-    setGeneralSignal((prior) => prior + 1)
+    setSignal((prior) => prior + 1)
   }, [])
   const ignorePropertiesSet = useMemo(() => new Set(ignoreProperties), [ignoreProperties])
 
@@ -208,6 +205,11 @@ export function useObject<T extends object> (initial: T, ignoreProperties?: Arra
     objectTracker.current,
     ignorePropertiesSet
   )
+
+  useEffect(() => {
+    revoked.current = false
+    return () => { revoked.current = true }
+  }, [])
 
   return [object, setObject, forceUpdate]
 }

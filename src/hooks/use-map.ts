@@ -1,127 +1,115 @@
-import { type SetStateAction, useState, useEffect } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+
+const MAP_MUTATORS = new Set<string>([
+  'set',
+  'delete',
+  'clear',
+  'getOrInsert',
+  'getOrInsertComputed'
+] satisfies Array<keyof Map<any, any>>)
 
 /**
- * This is a set that causes rerenders on updates
- * @note Effects and memos that use this set should also listen for its signal: `+INSTANCE`
+ * A map that rerenders on changes
  */
 export class StatefulMap<K, T> extends Map<K, T> {
-  /** The dispatch function for the signal */
-  protected readonly _dispatchSignal?: React.Dispatch<SetStateAction<number>>
-  /** The update signal */
-  protected _signal: number
-  /** THe dispatch function for redefining the set */
-  protected _dispatchRedefine?: React.Dispatch<SetStateAction<StatefulMap<K, T>>>
-
-  /**
-   * Construct a StatefulSet
-   * @param initial        The initial value (parameter for a vanilla set)
-   * @param dispatchSignal The dispatch function for the signal
-   */
-  constructor (initial?: Map<K, T> | Array<[K, T]>, dispatchSignal?: StatefulMap<K, T>['_dispatchSignal']) {
-    super(initial)
-    this._signal = 0
-    this._dispatchSignal = dispatchSignal
-  }
-
-  /**
-   * Set the redefine dispatch
-   * @private
-   * @param callback The function
-   */
-  _setRedefine (callback: StatefulMap<K, T>['_dispatchRedefine']): void {
-    this._dispatchRedefine = callback
-  }
-
-  /**
-   * Force a signal update
-   */
-  forceUpdate (): void {
-    this._dispatchSignal?.(++this._signal)
-  }
-
-  /**
-   * Set the instance to an entirely new instance
-   * @param           value The new instance
-   * @returns               The new instance
-   * @throws  {Error}       If no redefinition callback is defined
-   */
-  reset (value: Map<K, T>): Map<K, T> {
-    if (!this._dispatchRedefine) throw new Error('Cannot redefine Set. No redefine callback set.')
-    const instance = new StatefulMap(value, this._dispatchSignal)
-    instance._signal = this._signal
-
-    this._dispatchRedefine(instance)
-    instance._dispatchSignal?.(++instance._signal)
-
-    return instance
-  }
-
-  /**
-   * @override
-   */
-  override set (key: K, value: T): this {
-    const old = super.get(key)
-    const newKey = !this.has(key)
-    super.set(key, value)
-    if (newKey || old !== value) this._dispatchSignal?.(++this._signal)
-    return this
-  }
+  /** Force an update to register on the map */
+  forceUpdate: () => void = () => {}
+  /** Set the instance to an entirely new instance */
+  reset: (source: ConstructorParameters<typeof Map<K, T>>[0]) => void = () => {}
 
   /**
    * Bulk set an array of items
-   * @note Always rerenders
    * @param items An array of items
    * @param keyFn Either the name of a property of each item or a function that returns the key for each item
    * @returns     this
    */
   bulkSet<U extends K & keyof T> (items: T[], keyFn: U | ((i: T) => U)): this {
+    let wasUpdated = false
+
     for (const item of items) {
-      const key = typeof keyFn === 'function' ? keyFn(item) : item[keyFn]
+      const key = (typeof keyFn === 'function' ? keyFn(item) : item[keyFn]) as K
 
-      super.set(key as K, item)
+      if (!wasUpdated && (!super.has(key) || super.get(key) !== item)) wasUpdated = true
+      super.set(key, item)
     }
-    this._dispatchSignal?.(++this._signal)
 
+    if (wasUpdated) this.forceUpdate()
     return this
-  }
-
-  /**
-   * @override
-   */
-  override delete (key: K): boolean {
-    const returnValue = super.delete(key)
-    if (returnValue) this._dispatchSignal?.(++this._signal)
-    return returnValue
-  }
-
-  /**
-   * @override
-   */
-  override clear (): void {
-    super.clear()
-    this._dispatchSignal?.(this._signal = 0)
-  }
-
-  /**
-   * Returns the set's signal. Used for effects and memos that use this set
-   * @returns The numeric signal
-   */
-  override valueOf (): number {
-    return this._signal
   }
 }
 
 /**
- * Create a clone of a map that updates on mutation
- * @note Any effects or memos that use this set should also listen for its signal (`+INSTANCE`)
- * @param initial The initial set value
- * @returns       The stately set
+ * Proxy a map for updates
+ * @param map    The map
+ * @param update The update callback
+ * @returns      The proxied map
  */
-export function useMap<K, T> (initial?: Map<K, T> | Array<[K, T]>): StatefulMap<K, T> {
-  const [, setSignal] = useState(Array.isArray(initial) ? initial.length : initial?.size ?? 0)
-  const [map, setMap] = useState(new StatefulMap(initial, setSignal))
+function proxyMap<T extends Map<any, any>> (map: T, update: () => void): T {
+  const proxy = new Proxy(map, {
+    get (target, prop, receiver) {
+      const value: any = Reflect.get(target, prop, receiver)
 
-  useEffect(() => map._setRedefine(setMap), [map])
+      if (typeof prop === 'string' && MAP_MUTATORS.has(prop)) {
+        return (...args: unknown[]) => {
+          switch (prop) {
+            case 'set': {
+              const key = args[0]
 
-  return map
+              if (!target.has(key) || target.get(key) !== args[1]) update()
+              break
+            }
+            case 'clear':
+              if (target.size) update()
+              break
+            case 'getOrInsert':
+            case 'getOrInsertComputed':
+            case 'delete':
+              if (target.has(args[0])) update()
+              break
+          }
+
+          const ret = value.apply(target, args)
+          return ret === map
+            ? proxy
+            : ret
+        }
+      } else if (typeof value === 'function') return value.bind(target)
+      else return value
+    },
+
+    set (target, prop, value, receiver) {
+      const oldValue = Reflect.get(target, prop, receiver)
+
+      if (value !== oldValue) update()
+
+      return Reflect.set(target, prop, value, receiver)
+    }
+  })
+
+  return proxy
+}
+
+/**
+ * Create a clone of a map that updates on mutation
+ * @param source The source map or entry data
+ * @returns      The stateful map
+ */
+export function useMap<K, T> (source?: ConstructorParameters<typeof Map<K, T>>[0]): StatefulMap<K, T> {
+  const revoked = useRef(false)
+  const [signal, setSignal] = useState(0)
+
+  const [map, _setMap] = useState(new StatefulMap(source))
+  const setMap = useCallback((source: ConstructorParameters<typeof Map<K, T>>[0]) => _setMap(new StatefulMap(source)), [])
+  const update = useCallback(() => revoked.current ? undefined : setSignal((prior) => prior + 1), [])
+  map.forceUpdate = update
+  map.reset = setMap
+
+  const proxy = useMemo(() => proxyMap(map, update), [map, signal])
+
+  useEffect(() => {
+    revoked.current = false
+    return () => { revoked.current = true }
+  }, [])
+
+  return proxy
 }
