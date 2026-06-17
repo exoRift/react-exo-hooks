@@ -40,7 +40,7 @@ function Component () {
 ```
 
 ## useSet
-A Set. Rerenders upon mutation
+A Set. Rerenders upon mutation. This functions using proxy references, allowing React to detect reference changes without having to copy the data over and over again.
 > [!TIP]
 > Force state updates with `set.forceUpdate()`
 ```tsx
@@ -59,7 +59,7 @@ function Component () {
 ```
 
 ## useMap
-A Map. Rerenders upon mutation
+A Map. Rerenders upon mutation. This functions using proxy references, allowing React to detect reference changes without having to copy the data over and over again.
 > [!TIP]
 > Force state updates with `map.forceUpdate()`
 ```tsx
@@ -78,7 +78,7 @@ function Component () {
 ```
 
 ## useObject
-An Object or array. Rerenders on mutation. Will recursively listen on object/array children (not class instances)
+An Object or array. Rerenders on mutation. Will recursively listen on object/array children (not class instances). This functions using proxy references, allowing React to detect reference changes without having to copy the data over and over again.
 > [!TIP]
 > Force state updates with `forceUpdate()`, the third item of the tuple
 ```tsx
