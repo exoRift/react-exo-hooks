@@ -1,5 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 
+const SET_MUTATORS = new Set<string>([
+  'add',
+  'delete',
+  'clear'
+]/*  satisfies Array<keyof Set<any>> */)
+
 /**
  * A set that rerenders on changes
  */
@@ -26,12 +32,6 @@ export class StatefulSet<T> extends Set<T> {
     }
   }
 }
-
-const SET_MUTATORS = new Set<string>([
-  'add',
-  'delete',
-  'clear'
-] satisfies Array<keyof Set<any>>)
 
 /**
  * Proxy a set for updates

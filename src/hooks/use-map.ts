@@ -6,7 +6,7 @@ const MAP_MUTATORS = new Set<string>([
   'clear',
   'getOrInsert',
   'getOrInsertComputed'
-] satisfies Array<keyof Map<any, any>>)
+]/*  satisfies Array<keyof Map<any, any>> */)
 
 /**
  * A map that rerenders on changes
