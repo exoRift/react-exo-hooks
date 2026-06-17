@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 
 /** A map to get the original object from a proxy */
-const OG_OBJECT_LOOKUP = new Map()
-/** A map to keep track of object signals for individual object state evaluation */
-const OBJECT_SIGNALS = new Map<any, number>()
+const OG_OBJECT_LOOKUP = new WeakMap()
 
 const ARRAY_MUTATORS = new Set([
   'push',
@@ -65,13 +63,10 @@ function proxyArray<T> (arr: T[], update: (obj: any) => void, objectTracker: Map
   const existing = objectTracker.get(arr)
   if (existing) return existing
 
-  const valueOf = (): number => OBJECT_SIGNALS.get(proxy) ?? NaN
   const subUpdate = (subObj: any): void => { update(proxy); update(subObj) }
 
   const proxy = new Proxy(arr, {
     get (target, prop, receiver) {
-      if (prop === 'valueOf' || prop === Symbol.toPrimitive) return valueOf
-
       const value = Reflect.get(target, prop, receiver)
 
       if (typeof prop === 'string' && ARRAY_MUTATORS.has(prop)) {
@@ -117,8 +112,6 @@ function proxyArray<T> (arr: T[], update: (obj: any) => void, objectTracker: Map
   OG_OBJECT_LOOKUP.set(proxy, arr)
   objectTracker.set(arr, proxy)
 
-  OBJECT_SIGNALS.set(proxy, 0)
-
   return proxy
 }
 
@@ -136,13 +129,10 @@ function proxyObject<T extends object> (object: T, update: (obj: any) => void, o
   const existing = objectTracker.get(object)
   if (existing) return existing
 
-  const valueOf = (): number => OBJECT_SIGNALS.get(proxy) ?? NaN
   const subUpdate = (subObj: any): void => { update(proxy); update(subObj) }
 
   const proxy = new Proxy(object, {
     get (target, prop, receiver) {
-      if (prop === 'valueOf' || prop === Symbol.toPrimitive) return valueOf
-
       const value = Reflect.get(target, prop, receiver)
 
       if (!ignoreProperties.has(prop)) return transformValue(value, subUpdate, objectTracker, ignoreProperties)
@@ -171,8 +161,6 @@ function proxyObject<T extends object> (object: T, update: (obj: any) => void, o
   OG_OBJECT_LOOKUP.set(proxy, object)
   objectTracker.set(object, proxy)
 
-  OBJECT_SIGNALS.set(proxy, 0)
-
   return proxy
 }
 
@@ -180,10 +168,8 @@ function proxyObject<T extends object> (object: T, update: (obj: any) => void, o
  * Create a proxy object that updates on mutation.\
  * Changes to this object and its children will affect the original.\
  * This also applies to arrays.\
- * This hook is recursive into simple object properties. Class instances will remain unaffected
- * @note Effects and memos that use this object should also listen for its signal: `+INSTANCE`.\
- * You can call +obj on this object or any nested object/array\
- * (Example: `+root - +root.prop` will listen for changes to `root` while ignoring changes to `root.prop`)
+ * This hook is recursive into simple object properties. Class instances will remain unaffected \
+ * You can listen for changes on this object in hooks dependencies or any nested object/array
  * @param initial          The initial object
  * @param ignoreProperties A list of property keys to ignore when generating proxies / listening for changes
  * @returns                [object, setObject, forceUpdate]
@@ -199,39 +185,31 @@ export function useObject<T extends object> (initial: T, ignoreProperties?: Arra
   /** A map to keep track of transformed objects to prevent infinite recursions */
   const objectTracker = useRef(new Map())
 
-  const [_, setGeneralSignal] = useState(0)
-  const [object, setObject] = useState(initial)
+  const [_object, _setObject] = useState(initial)
+  const [, setGeneralSignal] = useState(0)
 
-  const revoker = useMemo(() => ({ revoked: false }), [object])
-
-  const submitUpdate = useCallback((obj: any) => {
-    const oldSignal = OBJECT_SIGNALS.get(obj)
-    if (oldSignal !== undefined) OBJECT_SIGNALS.set(obj, oldSignal + 1)
-    setGeneralSignal((prior) => prior + 1)
-  }, [])
-
-  const proxy = useMemo(() => {
-    // Prevent stale proxies from being served
+  const forceUpdate = useCallback(() => {
     objectTracker.current.clear()
-
-    return transformValue(
-      object,
-      (obj: any) => revoker.revoked ? undefined : submitUpdate(obj),
-      objectTracker.current,
-      new Set(ignoreProperties)
-    )
-  }, [object])
-
-  const forceUpdate = useCallback(() =>
     setGeneralSignal((prior) => prior + 1)
-  , [])
-
-  useEffect(() => {
-    revoker.revoked = false
-    return () => { revoker.revoked = true }
   }, [])
+  const setObject = useCallback<typeof _setObject>((val) => {
+    forceUpdate()
+    _setObject(val)
+  }, [forceUpdate])
+  const deleteEntry = useCallback((obj: any) => {
+    objectTracker.current.delete(OG_OBJECT_LOOKUP.get(obj))
+    setGeneralSignal((prior) => prior + 1)
+  }, [])
+  const ignorePropertiesSet = useMemo(() => new Set(ignoreProperties), [ignoreProperties])
 
-  return [proxy, setObject, forceUpdate]
+  const object = transformValue(
+    _object,
+    deleteEntry,
+    objectTracker.current,
+    ignorePropertiesSet
+  )
+
+  return [object, setObject, forceUpdate]
 }
 
 /**
@@ -239,6 +217,6 @@ export function useObject<T extends object> (initial: T, ignoreProperties?: Arra
  * @param obj The object to unproxy
  * @returns   The unproxied object
  */
-export function getUnproxiedObject<T> (obj: T): T {
+export function getUnproxiedObject<T extends object> (obj: T): T {
   return OG_OBJECT_LOOKUP.get(obj) ?? obj
 }
