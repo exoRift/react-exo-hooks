@@ -215,10 +215,34 @@ export function useObject<T extends object> (initial: T, ignoreProperties?: Arra
 }
 
 /**
- * Get an unproxied object, deeply unproxying all properties
+ * Get an unproxied object (copy), deeply unproxying all properties
+ * @param obj           The object to unproxy
+ * @param objectTracker A map to track already-unproxied objects
+ * @returns             The unproxied object
+ */
+function _getUnproxiedObject<T extends object> (obj: T, objectTracker: Map<any, any>): T {
+  if (objectTracker.has(obj)) return objectTracker.get(obj)
+  let og = OG_OBJECT_LOOKUP.get(obj) ?? obj
+  objectTracker.set(obj, og)
+
+  if (Array.isArray(og)) og = og.map((v) => _getUnproxiedObject(v, objectTracker))
+  else if (isProxyableObject(og)) {
+    const replacement: Record<any, any> = {}
+
+    for (const key in og) replacement[key] = _getUnproxiedObject(og[key as keyof typeof og], objectTracker)
+
+    og = replacement
+  }
+
+  return og
+}
+
+/**
+ * Get an unproxied object (copy), deeply unproxying all properties
  * @param obj The object to unproxy
  * @returns   The unproxied object
  */
 export function getUnproxiedObject<T extends object> (obj: T): T {
-  return OG_OBJECT_LOOKUP.get(obj) ?? obj
+  const objectTracker = new Map()
+  return _getUnproxiedObject(obj, objectTracker)
 }
