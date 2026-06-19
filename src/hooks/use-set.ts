@@ -42,6 +42,8 @@ export class StatefulSet<T> extends Set<T> {
 function proxySet<T extends Set<any>> (set: T, update: () => void): T {
   const proxy = new Proxy(set, {
     get (target, prop, receiver) {
+      if (prop === 'size') return target.size
+
       const value: any = Reflect.get(target, prop, receiver)
 
       if (typeof prop === 'string' && SET_MUTATORS.has(prop)) {

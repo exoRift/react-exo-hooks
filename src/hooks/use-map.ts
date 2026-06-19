@@ -47,6 +47,8 @@ export class StatefulMap<K, T> extends Map<K, T> {
 function proxyMap<T extends Map<any, any>> (map: T, update: () => void): T {
   const proxy = new Proxy(map, {
     get (target, prop, receiver) {
+      if (prop === 'size') return target.size
+
       const value: any = Reflect.get(target, prop, receiver)
 
       if (typeof prop === 'string' && MAP_MUTATORS.has(prop)) {

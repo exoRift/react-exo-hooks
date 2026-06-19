@@ -15,6 +15,7 @@ describe('useMap', () => {
     const nextSignal = result.current
 
     expect(result.current.get('a')).toBe(1)
+    expect(result.current.size).toBe(1)
     expect(nextSignal).not.toBe(initialSignal)
 
     act(() => {

@@ -15,6 +15,7 @@ describe('useSet', () => {
     const nextSignal = result.current
 
     expect(result.current.has('a')).toBe(true)
+    expect(result.current.size).toBe(1)
     expect(nextSignal).not.toBe(initialSignal)
 
     act(() => {
@@ -52,5 +53,10 @@ describe('useSet', () => {
 
     await waitFor(() => expect(result.current).not.toBe(original))
     expect(Array.from(result.current)).toEqual(['b', 'c'])
+  })
+
+  test('symmetricDifference works', async () => {
+    const { result } = renderHook(() => useSet<string>(['a']))
+    expect(Array.from(result.current.symmetricDifference(new Set(['b'])))).toEqual(['a', 'b'])
   })
 })
