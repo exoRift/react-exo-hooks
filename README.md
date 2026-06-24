@@ -1,12 +1,25 @@
 # React exo Hooks
+A collection of useful hooks for data structures and logic, designed for efficiency and performance
 
-## useUnsaved
-Prevent user navigation/window closing when there are unsaved changes (NextJS router compatible)
-```ts
+## useObject
+An Object or array. Rerenders on mutation. Will recursively listen on object/array children (not class instances). This functions using proxy references, allowing React to detect reference changes without having to copy the data over and over again.
+> [!TIP]
+> Force state updates with `forceUpdate()`, the third item of the tuple
+```tsx
 function Component () {
-  const [isUnsaved, setIsUnsaved] = useState(false)
+  const [object, setObject] = useObject({ foo: { bar: 'baz' } })
 
-  useUnsaved(isUnsaved)
+  useEffect(() => {
+    console.log('Object updated!', object)
+  }, [object])
+
+  useEffect(() => {
+    console.log('Foo updated!', object.foo)
+  }, [object.foo])
+
+  return (
+    <button onClick={() => { object.foo.bar = 'foobar' }}>CLICK ME</button>
+  )
 }
 ```
 
@@ -40,7 +53,7 @@ function Component () {
 ```
 
 ## useSet
-A Set. Rerenders upon mutation. This functions using proxy references, allowing React to detect reference changes without having to copy the data over and over again.
+A Set. Rerenders upon mutation. To listen on changes in hook dependencies, coerce to a numeric type (`+set`)
 > [!TIP]
 > Force state updates with `set.forceUpdate()`
 ```tsx
@@ -59,7 +72,7 @@ function Component () {
 ```
 
 ## useMap
-A Map. Rerenders upon mutation. This functions using proxy references, allowing React to detect reference changes without having to copy the data over and over again.
+A Map. Rerenders upon mutation. To listen on changes in hook dependencies, coerce to a numeric type (`+map`)
 > [!TIP]
 > Force state updates with `map.forceUpdate()`
 ```tsx
@@ -73,28 +86,6 @@ function Component () {
 
   return (
     <button onClick={() => map.set('foo', 52)}>CLICK ME</button>
-  )
-}
-```
-
-## useObject
-An Object or array. Rerenders on mutation. Will recursively listen on object/array children (not class instances). This functions using proxy references, allowing React to detect reference changes without having to copy the data over and over again.
-> [!TIP]
-> Force state updates with `forceUpdate()`, the third item of the tuple
-```tsx
-function Component () {
-  const [object, setObject] = useObject({ foo: { bar: 'baz' } })
-
-  useEffect(() => {
-    console.log('Object updated!', object)
-  }, [object])
-
-  useEffect(() => {
-    console.log('Foo updated!', object.foo)
-  }, [object.foo])
-
-  return (
-    <button onClick={() => { object.foo.bar = 'foobar' }}>CLICK ME</button>
   )
 }
 ```
@@ -113,5 +104,15 @@ function Component ({ array }: { array: string[] }) {
   return (
     <button onClick={() => { object.foo.bar = 'foobar' }}>CLICK ME</button>
   )
+}
+```
+
+## useUnsaved
+Prevent user navigation/window closing when there are unsaved changes (NextJS router compatible)
+```ts
+function Component () {
+  const [isUnsaved, setIsUnsaved] = useState(false)
+
+  useUnsaved(isUnsaved)
 }
 ```

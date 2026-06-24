@@ -1,13 +1,9 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-
-const SET_MUTATORS = new Set<string>([
-  'add',
-  'delete',
-  'clear'
-]/*  satisfies Array<keyof Set<any>> */)
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 /**
  * A set that rerenders on changes
+ * @note All calls to forceUpdate are nullishly coalesced
+ * @note because cloning methods will attempt to apply the overrides to vanilla instances
  */
 export class StatefulSet<T> extends Set<T> {
   /** Force an update to register on the set */
@@ -23,69 +19,37 @@ export class StatefulSet<T> extends Set<T> {
   toggle (value: T): boolean {
     if (super.has(value)) {
       super.delete(value)
-      this.forceUpdate()
+      this.forceUpdate?.() // eslint-disable-line @typescript-eslint/no-unnecessary-condition
       return false
     } else {
       super.add(value)
-      this.forceUpdate()
+      this.forceUpdate?.() // eslint-disable-line @typescript-eslint/no-unnecessary-condition
       return false
     }
+  }
+
+  override add (value: T): this { // eslint-disable-line jsdoc/require-jsdoc
+    if (!super.has(value)) this.forceUpdate?.() // eslint-disable-line @typescript-eslint/no-unnecessary-condition
+
+    return super.add(value)
+  }
+
+  override delete (value: T): boolean { // eslint-disable-line jsdoc/require-jsdoc
+    if (super.has(value)) this.forceUpdate?.() // eslint-disable-line @typescript-eslint/no-unnecessary-condition
+
+    return super.delete(value)
+  }
+
+  override clear (): void { // eslint-disable-line jsdoc/require-jsdoc
+    if (super.size) this.forceUpdate?.() // eslint-disable-line @typescript-eslint/no-unnecessary-condition
+
+    return super.clear()
   }
 }
 
 /**
- * Proxy a set for updates
- * @param set    The set
- * @param update The update callback
- * @returns      The proxied set
- */
-function proxySet<T extends Set<any>> (set: T, update: () => void): T {
-  const proxy = new Proxy(set, {
-    get (target, prop, receiver) {
-      if (prop === 'size') return target.size
-
-      const value: any = Reflect.get(target, prop, receiver)
-
-      if (typeof prop === 'string' && SET_MUTATORS.has(prop)) {
-        return (...args: unknown[]) => {
-          switch (prop) {
-            case 'add': {
-              const key = args[0]
-
-              if (!target.has(key)) update()
-              break
-            }
-            case 'clear':
-              if (target.size) update()
-              break
-            case 'delete':
-              if (target.has(args[0])) update()
-              break
-          }
-
-          const ret = value.apply(target, args)
-          return ret === set
-            ? proxy
-            : ret
-        }
-      } else if (typeof value === 'function') return value.bind(target)
-      else return value
-    },
-
-    set (target, prop, value, receiver) {
-      const oldValue = Reflect.get(target, prop, receiver)
-
-      if (value !== oldValue) update()
-
-      return Reflect.set(target, prop, value, receiver)
-    }
-  })
-
-  return proxy
-}
-
-/**
  * Create a clone of a set that updates on mutation
+ * To listen on changes in hook dependencies, coerce to a numeric type (`+set`)
  * @param source The source set or entry data
  * @returns      The stateful set
  */
@@ -93,18 +57,17 @@ export function useSet<T> (source?: ConstructorParameters<typeof Set<T>>[0]): St
   const revoked = useRef(false)
   const [signal, setSignal] = useState(0)
 
-  const [map, _setMap] = useState(new StatefulSet(source))
-  const setMap = useCallback((source: ConstructorParameters<typeof Set<T>>[0]) => _setMap(new StatefulSet(source)), [])
+  const [set, _setSet] = useState(new StatefulSet(source))
   const update = useCallback(() => revoked.current ? undefined : setSignal((prior) => prior + 1), [])
-  map.forceUpdate = update
-  map.reset = setMap
-
-  const proxy = useMemo(() => proxySet(map, update), [map, signal])
+  const setSet = useCallback((src: ConstructorParameters<typeof Set<T>>[0]) => { _setSet(new StatefulSet(src)); update() }, [update])
+  set.forceUpdate = update
+  set.reset = setSet
+  set.valueOf = () => signal
 
   useEffect(() => {
     revoked.current = false
     return () => { revoked.current = true }
   }, [])
 
-  return proxy
+  return set
 }

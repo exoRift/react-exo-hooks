@@ -6,13 +6,13 @@ import { useSet } from '../src/hooks/use-set'
 describe('useSet', () => {
   test('add and delete update size and signal', () => {
     const { result } = renderHook(() => useSet<string>())
-    const initialSignal = result.current
+    const initialSignal = +result.current
 
     act(() => {
       result.current.add('a')
     })
 
-    const nextSignal = result.current
+    const nextSignal = +result.current
 
     expect(result.current.has('a')).toBe(true)
     expect(result.current.size).toBe(1)
@@ -23,8 +23,8 @@ describe('useSet', () => {
     })
 
     expect(result.current.has('a')).toBe(false)
-    expect(result.current).not.toBe(initialSignal)
-    expect(result.current).not.toBe(nextSignal)
+    expect(+result.current).not.toBe(initialSignal)
+    expect(+result.current).not.toBe(nextSignal)
   })
 
   test('toggle flips membership', () => {
@@ -45,13 +45,13 @@ describe('useSet', () => {
 
   test('reset replaces the instance', async () => {
     const { result } = renderHook(() => useSet<string>(['a']))
-    const original = result.current
+    const original = +result.current
 
     act(() => {
       result.current.reset(['b', 'c'])
     })
 
-    await waitFor(() => expect(result.current).not.toBe(original))
+    await waitFor(() => expect(+result.current).not.toBe(original))
     expect(Array.from(result.current)).toEqual(['b', 'c'])
   })
 

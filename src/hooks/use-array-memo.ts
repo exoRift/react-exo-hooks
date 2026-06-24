@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
  * @param arr The array to memo
  * @returns   The memoed array
  */
-export function useArrayMemo<T extends any[]> (arr: T): T {
+export function useArrayMemo<T extends readonly any[]> (arr: T): T {
   const [memoed, setMemoed] = useState(arr)
 
   useEffect(() => {

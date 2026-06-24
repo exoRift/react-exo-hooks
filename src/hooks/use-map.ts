@@ -1,15 +1,9 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-
-const MAP_MUTATORS = new Set<string>([
-  'set',
-  'delete',
-  'clear',
-  'getOrInsert',
-  'getOrInsertComputed'
-]/*  satisfies Array<keyof Map<any, any>> */)
+import { useState, useCallback, useRef, useEffect } from 'react'
 
 /**
  * A map that rerenders on changes
+ * @note All calls to forceUpdate are nullishly coalesced
+ * @note because cloning methods will attempt to apply the overrides to vanilla instances
  */
 export class StatefulMap<K, T> extends Map<K, T> {
   /** Force an update to register on the map */
@@ -33,66 +27,44 @@ export class StatefulMap<K, T> extends Map<K, T> {
       super.set(key, item)
     }
 
-    if (wasUpdated) this.forceUpdate()
+    if (wasUpdated) this.forceUpdate?.() // eslint-disable-line @typescript-eslint/no-unnecessary-condition
     return this
+  }
+
+  override set (key: K, value: T): this { // eslint-disable-line jsdoc/require-jsdoc
+    if (!super.has(key) || super.get(key) !== value) this.forceUpdate?.() // eslint-disable-line @typescript-eslint/no-unnecessary-condition
+
+    return super.set(key, value)
+  }
+
+  override clear (): void { // eslint-disable-line jsdoc/require-jsdoc
+    if (super.size) this.forceUpdate?.() // eslint-disable-line @typescript-eslint/no-unnecessary-condition
+
+    return super.clear()
+  }
+
+  override delete (key: K): boolean { // eslint-disable-line jsdoc/require-jsdoc
+    if (super.has(key)) this.forceUpdate?.() // eslint-disable-line @typescript-eslint/no-unnecessary-condition
+
+    return super.delete(key)
+  }
+
+  override getOrInsert (key: K, defaultValue: T): T { // eslint-disable-line jsdoc/require-jsdoc
+    if (!super.has(key)) this.forceUpdate?.() // eslint-disable-line @typescript-eslint/no-unnecessary-condition
+
+    return super.getOrInsert(key, defaultValue)
+  }
+
+  override getOrInsertComputed (key: K, callback: (key: K) => T): T { // eslint-disable-line jsdoc/require-jsdoc
+    if (!super.has(key)) this.forceUpdate?.() // eslint-disable-line @typescript-eslint/no-unnecessary-condition
+
+    return super.getOrInsertComputed(key, callback)
   }
 }
 
 /**
- * Proxy a map for updates
- * @param map    The map
- * @param update The update callback
- * @returns      The proxied map
- */
-function proxyMap<T extends Map<any, any>> (map: T, update: () => void): T {
-  const proxy = new Proxy(map, {
-    get (target, prop, receiver) {
-      if (prop === 'size') return target.size
-
-      const value: any = Reflect.get(target, prop, receiver)
-
-      if (typeof prop === 'string' && MAP_MUTATORS.has(prop)) {
-        return (...args: unknown[]) => {
-          switch (prop) {
-            case 'set': {
-              const key = args[0]
-
-              if (!target.has(key) || target.get(key) !== args[1]) update()
-              break
-            }
-            case 'clear':
-              if (target.size) update()
-              break
-            case 'getOrInsert':
-            case 'getOrInsertComputed':
-            case 'delete':
-              if (target.has(args[0])) update()
-              break
-          }
-
-          const ret = value.apply(target, args)
-          return ret === map
-            ? proxy
-            : ret
-        }
-      } else if (typeof value === 'function') return value.bind(target)
-      else return value
-    },
-
-    set (target, prop, value, receiver) {
-      const oldValue = Reflect.get(target, prop, receiver)
-
-      if (value !== oldValue) update()
-
-      return Reflect.set(target, prop, value, receiver)
-    }
-  })
-
-  return proxy
-}
-
-/**
  * Create a clone of a map that updates on mutation
+ * To listen on changes in hook dependencies, coerce to a numeric type (`+map`)
  * @param source The source map or entry data
  * @returns      The stateful map
  */
@@ -101,17 +73,16 @@ export function useMap<K, T> (source?: ConstructorParameters<typeof Map<K, T>>[0
   const [signal, setSignal] = useState(0)
 
   const [map, _setMap] = useState(new StatefulMap(source))
-  const setMap = useCallback((source: ConstructorParameters<typeof Map<K, T>>[0]) => _setMap(new StatefulMap(source)), [])
   const update = useCallback(() => revoked.current ? undefined : setSignal((prior) => prior + 1), [])
+  const setMap = useCallback((src: ConstructorParameters<typeof Map<K, T>>[0]) => { _setMap(new StatefulMap(src)); update() }, [update])
   map.forceUpdate = update
   map.reset = setMap
-
-  const proxy = useMemo(() => proxyMap(map, update), [map, signal])
+  map.valueOf = () => signal
 
   useEffect(() => {
     revoked.current = false
     return () => { revoked.current = true }
   }, [])
 
-  return proxy
+  return map
 }
