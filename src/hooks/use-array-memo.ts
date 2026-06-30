@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useMemo, useRef } from 'react'
 
 /**
  * Memo an array reference if it doesn't change
@@ -6,11 +6,12 @@ import { useEffect, useState } from 'react'
  * @returns   The memoed array
  */
 export function useArrayMemo<T extends readonly any[]> (arr: T): T {
-  const [memoed, setMemoed] = useState(arr)
+  const memoed = useRef(arr)
 
-  useEffect(() => {
-    if (arr.length !== memoed.length || arr.some((e, i) => e !== memoed[i])) setMemoed(arr)
+  // `useMemo` so update runs before everything
+  useMemo(() => {
+    if (arr.length !== memoed.current.length || arr.some((e, i) => e !== memoed.current[i])) memoed.current = arr
   }, [arr])
 
-  return memoed
+  return memoed.current
 }
