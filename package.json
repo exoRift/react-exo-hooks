@@ -1,6 +1,6 @@
 {
   "name": "react-exo-hooks",
-  "version": "4.0.1",
+  "version": "4.0.2",
   "main": "dist/index.js",
   "description": "A collection of useful hooks for data structures and logic, designed for efficiency and performance",
   "keywords": ["react", "hooks", "usearray", "use-array", "useobject", "use-object", "usemap", "use-map", "useunsaved", "use-unsaved", "useset", "use-set", "usepromise", "use-promise", "debounce", "object-state"],

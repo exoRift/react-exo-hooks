@@ -76,7 +76,9 @@ describe('useUnsaved', () => {
     expect(prevented).toBe(true)
 
     expect(() => router._emit('routeChangeStart', '/posts/123')).not.toThrow()
+    expect(() => router._emit('routeChangeStart', '/posts/456')).not.toThrow()
     expect(() => router._emit('routeChangeStart', '/other')).toThrow()
+    expect(() => router._emit('routeChangeStart', '/posts/123/edit')).toThrow()
 
     unmount()
     expect(beforeUnloadHandler).toBeUndefined()

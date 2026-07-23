@@ -24,8 +24,23 @@ export function useUnsaved (unsaved?: boolean, nextRouter?: NextRouter | typeof 
        * @throws {Error}     To prevent page navigation
        */
       function preventUnsavedNav (url: string): void {
-        const urlSplit = url.split('?')[0]!.split('/')
-        if (router?.pathname.split('/').every((subroute, i) => (subroute.startsWith('[') && subroute.endsWith(']')) || subroute === urlSplit[i])) return
+        if (router) {
+          const newUrlSplit = url.split('?')[0]!.split('/')
+          const currentUrlSplit = router.pathname.split('/')
+
+          let matches = true
+          for (let i = 0; i < Math.max(newUrlSplit.length, currentUrlSplit.length); ++i) {
+            const subCurrent = currentUrlSplit[i]
+            const subNew = newUrlSplit[i]
+
+            if (!((subCurrent?.startsWith('[') && subCurrent.endsWith(']') && subNew) || subCurrent === subNew)) {
+              matches = false
+              break
+            }
+          }
+
+          if (matches) return
+        }
 
         if (!confirm('Changes you made may not be saved.')) throw new Error('Navigation Canceled')
       }
