@@ -53,9 +53,11 @@ function Component () {
 ```
 
 ## useSet
-A Set. Rerenders upon mutation. To listen on changes in hook dependencies, coerce to a numeric type (`+set`)
+A Set. Rerenders upon mutation. This functions using proxy references, allowing React to detect reference changes without having to copy the data over and over again.
 > [!TIP]
 > Force state updates with `set.forceUpdate()`
+> [!TIP]
+> `set.writer` is a constant reference to the underlying set. Write through it to mutate the set without subscribing to its changes. This is important for proper React Compiler optimization
 ```tsx
 function Component () {
   const set = useSet<string>()
@@ -63,18 +65,23 @@ function Component () {
   useEffect(() => {
     console.log('set items:')
     for (const item of set) console.log(item)
-  }, [set, +set])
+  }, [set])
+
+  // Never recomputed, no matter how much the set changes
+  const add = useCallback(() => set.writer.add('foo'), [set.writer])
 
   return (
-    <button onClick={() => set.add('foo')}>CLICK ME</button>
+    <button onClick={add}>CLICK ME</button>
   )
 }
 ```
 
 ## useMap
-A Map. Rerenders upon mutation. To listen on changes in hook dependencies, coerce to a numeric type (`+map`)
+A Map. Rerenders upon mutation. This functions using proxy references, allowing React to detect reference changes without having to copy the data over and over again.
 > [!TIP]
 > Force state updates with `map.forceUpdate()`
+> [!TIP]
+> `map.writer` is a constant reference to the underlying map. Write through it to mutate the map without subscribing to its changes. This is important for proper React Compiler optimization
 ```tsx
 function Component () {
   const map = useMap<string, number>()
@@ -82,10 +89,13 @@ function Component () {
   useEffect(() => {
     console.log('map items:')
     for (const [key, value] of map.entries()) console.log(`[${key}]: ${value}`)
-  }, [map, +map])
+  }, [map])
+
+  // Never recomputed, no matter how much the map changes
+  const set = useCallback((value: number) => map.writer.set('foo', value), [map.writer])
 
   return (
-    <button onClick={() => map.set('foo', 52)}>CLICK ME</button>
+    <button onClick={() => set(52)}>CLICK ME</button>
   )
 }
 ```

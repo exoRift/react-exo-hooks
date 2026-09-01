@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 
 /**
  * A set that rerenders on changes
@@ -8,8 +8,28 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 export class StatefulSet<T> extends Set<T> {
   /** Force an update to register on the set */
   forceUpdate: () => void = () => {}
-  /** Set the instance to an entirely new instance */
-  reset: (source: ConstructorParameters<typeof Set<T>>[0]) => void = () => {}
+
+  /**
+   * A constant reference to the underlying set
+   * @note Mutating through this reference still triggers updates, but the reference never changes,
+   * @note so it can be listed as a hook dependency without invalidating memos on every write
+   * @returns The underlying set
+   */
+  get writer (): this {
+    return this
+  }
+
+  /**
+   * Replace the contents of the set in-place, preserving the reference
+   * @param source The source set or entry data
+   */
+  reset (source?: ConstructorParameters<typeof Set<T>>[0]): void {
+    super.clear()
+
+    if (source) for (const value of source) super.add(value)
+
+    this.forceUpdate?.() // eslint-disable-line @typescript-eslint/no-unnecessary-condition
+  }
 
   /**
    * Toggle if an element is present within the set
@@ -24,7 +44,7 @@ export class StatefulSet<T> extends Set<T> {
     } else {
       super.add(value)
       this.forceUpdate?.() // eslint-disable-line @typescript-eslint/no-unnecessary-condition
-      return false
+      return true
     }
   }
 
@@ -48,8 +68,42 @@ export class StatefulSet<T> extends Set<T> {
 }
 
 /**
+ * Proxy a set to hand out a new reference whenever its contents change
+ * @param set The set
+ * @returns   The proxied set
+ */
+function proxySet<T extends StatefulSet<any>> (set: T): T {
+  /** Prototype methods are cached so that repeat accesses remain reference-equal */
+  const methods = new Map<PropertyKey, (...args: any[]) => any>()
+
+  const proxy: T = new Proxy(set, {
+    get (target, prop) {
+      const cached = methods.get(prop)
+      if (cached) return cached
+
+      // The target is the receiver because a proxy lacks the internal slots that accessors like `size` need
+      const value: unknown = Reflect.get(target, prop, target)
+      if (typeof value !== 'function') return value
+
+      const method = (...args: any[]): any => {
+        const returned: unknown = Reflect.apply(value as (...a: any[]) => any, target, args)
+
+        return returned === target ? proxy : returned // Chainable mutators return the instance
+      }
+
+      if (!Object.hasOwn(target, prop)) methods.set(prop, method) // Own properties (like `forceUpdate`) can be reassigned
+
+      return method
+    }
+  })
+
+  return proxy
+}
+
+/**
  * Create a clone of a set that updates on mutation
- * To listen on changes in hook dependencies, coerce to a numeric type (`+set`)
+ * Every mutation hands back a new reference, so the set can be listed directly in hook dependencies
+ * To mutate without listening for changes (such as within a memoized callback), depend on `set.writer`
  * @param source The source set or entry data
  * @returns      The stateful set
  */
@@ -57,17 +111,16 @@ export function useSet<T> (source?: ConstructorParameters<typeof Set<T>>[0]): St
   const revoked = useRef(false)
   const [signal, setSignal] = useState(0)
 
-  const [set, _setSet] = useState(new StatefulSet(source))
+  const [set] = useState(() => new StatefulSet<T>(source))
   const update = useCallback(() => revoked.current ? undefined : setSignal((prior) => prior + 1), [])
-  const setSet = useCallback((src: ConstructorParameters<typeof Set<T>>[0]) => { _setSet(new StatefulSet(src)); update() }, [update])
   set.forceUpdate = update
-  set.reset = setSet
-  set.valueOf = () => signal
+
+  const proxy = useMemo(() => proxySet(set), [set, signal])
 
   useEffect(() => {
     revoked.current = false
     return () => { revoked.current = true }
   }, [])
 
-  return set
+  return proxy
 }
